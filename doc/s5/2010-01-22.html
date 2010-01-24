@@ -1,0 +1,227 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+	<title>Title</title>
+
+	<!-- metadata -->
+	<meta name="generator" content="S5" />
+	<meta name="version" content="S5 1.2a2" />
+
+	<!-- me -->
+	<meta name="author" content="Oliver Gould" />
+	<meta name="company" content="Yahoo!, Inc." />
+
+	<!-- configuration parameters -->
+	<meta name="defaultView" content="slideshow" />
+	<meta name="controlVis" content="hidden" />
+
+	<!-- style sheet links -->
+	<link rel="stylesheet" href="ui/default/slides.css" type="text/css"
+			media="projection" id="slideProj" />
+	<link rel="stylesheet" href="ui/default/outline.css" type="text/css"
+			media="screen" id="outlineStyle" />
+	<link rel="stylesheet" href="ui/default/print.css" type="text/css"
+			media="print" id="slidePrint" />
+	<link rel="stylesheet" href="ui/default/opera.css" type="text/css"
+			media="projection" id="operaFix" />
+
+	<!-- embedded styles -->
+	<style type="text/css" media="all">
+		.imgcon {width: 525px; margin: 0 auto; padding: 0; text-align: center;}
+		#anim {width: 270px; height: 320px; position: relative; margin-top: 0.5em;}
+		#anim img {position: absolute; top: 42px; left: 24px;}
+		img#me01 {top: 0; left: 0;}
+		img#me02 {left: 23px;}
+		img#me04 {top: 44px;}
+		img#me05 {top: 43px;left: 36px;}
+		table#glossary { margin: 5px; }
+		table#glossary td { padding: 5px; }
+		table#glossary td.code { font-size: 16px; font-family: monospace; }
+		table#glossary th { font-family: sans-serif; }
+		table#glossary th.top { border-bottom: black 1px solid; }
+		table#glossary th.left { border-right: black 1px solid; }
+	</style>
+	<!-- S5 JS -->
+	<script src="ui/default/slides.js" type="text/javascript"></script>
+</head>
+<body>
+
+<div class="layout">
+	<div id="controls"><!-- DO NOT EDIT --></div>
+	<div id="currentSlide"><!-- DO NOT EDIT --></div>
+
+	<div id="header"></div>
+	<div id="footer">
+		<h1>Oliver Gould <tt>&lt;<a style="color:white;" href="mailto:ver@yahoo-inc.com">ver</a></a>@&gt;</tt>
+		<h2>Jersey Lab Services &#8226; 2010-01-22</h2>
+	  <h1>SysArch Confidential</h1>
+	</div>
+</div>
+
+
+<div class="presentation">
+
+	<div style="font-family:sans-serif;" class="slide">
+		<h1>Jersey Lab Services</h1>
+		<h2>Iteratively Engineering the Ops Cloud</h2>
+		<h3>Oliver Gould <tt>&lt;<a href="mailto:ver@yahoo-inc.com">ver</a>@&gt;</tt></h3>
+		<h4>System Architecture</h4>
+		<!-- h5><a href="http://book.jersey.ops.yahoo.com/...">...</h5 -->
+	</div>
+
+	<div class="slide">
+		<h1>So what is this lab thing?</h1>
+		<ul class="incremental">
+			<li>Ops QA and staging
+			<li>Network and performance testing
+			<li>Ops development
+			<li>"A playground"
+			<li>Yes, yes, yes, and yes; but it should be more...
+		</ul>
+	</div>
+
+	<div class="slide">
+		<h1>What exactly do we do around here?</h1>
+		<ol>
+			<li>Know the intimate details of the software systems that support
+			Yahoo!'s production operations.
+			<li>Document technical directions of these systems, guided by Yahoo!'s
+			strategic business needs.
+			<li>Work with stakeholders to engineer outcomes.
+		</ol>
+		I.e. "Architecture."
+	</div>
+
+	<div class="slide">
+		<h1>Leveraging the lab</h1>
+		<ul class="incremental show-first">
+			<li>Yahoo!'s cloud initiative is focused on (customer-facing) properties.
+			We need to develop strategies to prepare Ops for the coming sea change.
+			<li>&quot;<i>If you haven't written the program you don't know what you're
+				talking about.</i>&quot; - Andy van Dam via Dan Duchamp
+			<li>The lab is the right place for this.
+			<li>Need an environment unconstrained by Yahoo!'s legacy pile.
+			<i>Nothing</i> is sacred.
+			<li>Lab-facing services have a limited set of stakeholders and fewer
+			dependencies than corporate and production systems.  Furthermore, no
+			assumption of production SLAs 
+		</ul>
+	</div>
+
+	<div class="slide">
+		<h1>Jersey</h1>
+		<img src="JerseyBlocks.png" alt="Block Diagram Service layers" />
+	</div>
+
+	<div class="slide">
+		<h1>Jersey: Ops Cloud</h1>
+		<ul>
+			<li>Small, Internet Services (WWW, DNS, etc) (not web sites).
+			<li>Today's lab services drive Ops cloud architecture of tomorrow.
+		</ul>
+	</div>
+
+	<div class="slide">
+		<h1>Jersey: Critical Service Gaps</h1>
+		<ol>
+			<li>Resource management
+		<ol>
+	</div>
+
+	<div class="slide">
+		<h1>Jersey: Service Vision</h1>
+		<ul>
+			<li>Build/Test/Deployment Automation
+			<li>Host, user, and bot key management
+			  <ul>
+					<li>WWW-Auth via keys (!!!)
+				</ul>
+			<li>Realms (auth)
+			<li>Storage (a la S3/MObStor/Sherpa)
+			<li>Queues (a la SQS)
+		</ul>
+	</div>
+
+	<div class="slide">
+		<h1>Fundamental Architecture</h1>
+		<ul>
+			<li>Small, independent web services exposing uniform REST interfaces:
+			<ul>
+				<li>All resources (URIs) are nouns.
+				<li>HTTP gives us the verbs: GET, HEAD, PUT, POST, DELETE, OPTIONS, etc...
+				<li>Addressibility means connectedness: programmatic links are good.
+			</ul>
+			<li>Utilize HTTP to its fullest:
+			<ul>
+				<li>Meaning in HTTP request method and response status; (e.g. <tt>401
+					Unauthorized4</tt>)
+				<li>Proxy services can be used to update two services from a single
+				interface.
+			</ul>
+
+		</ul>
+	</div>
+
+	<div class="slide">
+		<h1>Process</h1>
+		<ul>
+			<li>Short iterative development cycles aimed at a specific and small set
+			of tasks.
+			<li>Releases are regular -- features are either completely integrated and
+			documented or deferred to a later release.
+			<li>Worst-case: roll-back to the last release.
+			<li>Also, release:deployment != 1:1
+		</ul>
+	</div>
+
+	<div class="slide">
+		<h1>Code</h1>
+		<ul>
+			<li>Developed and maintained by System Architecture.
+			<li>The only constraints on an implementation are:
+			<ul>
+				<li>Completely documented
+				<li>Testable and integrated
+				<li>Reviewed to be sane and consistent
+			</ul>
+		</ul>
+		<div class="handout">
+		</div>
+	</div>
+
+	<div class="slide">
+		<h1>Book of Jersey</h1>
+	  Documentation is critical.
+		<ul>
+			<li>Developed as an extension of the code -- tracked by <a href="http://twiki.corp.yahoo.com/view/NssArch/DevelWorkflow">Bugs and VCS</a>.
+			<li>Documentation is reviewed
+			focus as business needs change and lessons are learned.
+		</ul>
+		<div class="handout">
+		</div>
+	</div>
+
+	<div class="slide">
+		<h1>Concerns</h1>
+		<ul>
+			<li>External dependencies stifle agility; this requires a concious effort
+			to manage 
+			<li>Releases <b>are</b> sacred.  Today's emergency cannot effect
+			tomorrow's release.
+		</ul>
+		<div class="handout">
+		</div>
+	</div>
+
+</div>
+
+</body>
+</html>
+<!--
+  $Id: template.html 419 2009-05-01 06:19:58Z ver $
+	$URL: svn+ssh://svn.corp/yahoo/ops/nss/user/ver/s5/template.html $
+  vim: ts=2 sw=2 
+	-->

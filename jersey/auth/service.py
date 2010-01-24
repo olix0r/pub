@@ -24,8 +24,8 @@ class DirectoryBackedKeyService(MultiService):
     implements(IPublicKeyService)
 
     def __init__(self, keyDir):
-        self.keyDir = d = FilePath(keyDir)
-        assert d.isdir()
+        self.keyDir = k = FilePath(keyDir)
+        assert k.isdir()
 
 
     def _openUserFile(self, user):
