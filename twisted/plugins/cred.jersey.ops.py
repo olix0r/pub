@@ -96,7 +96,7 @@ class JerseyKeysOptions(Options):
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)
 
-    tapname = "jersey-keys"
+    tapname = "cred.jersey.ops"
     description = "Jersey Public Key Service"
     options = JerseyKeysOptions
 

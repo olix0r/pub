@@ -47,7 +47,7 @@ setup(
             "animals_keys/antelope",
             "animals_keys/monkey",
             ],
-        "twisted.plugins": ["jersey-keys.py",],
+        "twisted.plugins": ["cred.jersey.ops.py",],
         },
 
     )

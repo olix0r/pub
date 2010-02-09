@@ -24,7 +24,6 @@ class IPrivateKey(Interface):
     """Based on twisted.cred.credentials.ISSHPrivateKey"""
     username = Attribute("Credential's username.")
     client = Attribute("Client IP")
-    #blob = Attribute("The publc key blob as sent by the client.")
     data = Attribute("Signed data")
     signature = Attribute("The signed data.")
 
@@ -35,7 +34,6 @@ class PrivateKey(object):
     def __init__(self, username, client, data, signature):
         self.username = username
         self.client = client
-        #self.blob = blob
         self.data = data
         self.signature = signature
 
@@ -76,21 +74,21 @@ registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
 class PubKeyCredentialFactory(object):
     implements(ICredentialFactory)
 
-    scheme = "PUBKEY"
+    scheme = "CRED.JERSEY.OPS.YAHOO.COM"
 
-    nonceLength = 32
+    randLength = 32
     sessionLength = 5*60  # 5 minutes
-    hash = "sha256"
+    digestAlgorithm = "sha256"
 
 
     def __init__(self, realmName):
         self.realmName = realmName
-        self._secret = secureRandom(self.nonceLength)
+        self._secret = secureRandom(self.randLength)
 
 
     def getChallenge(self, request):
-        nonce = self._generateNonce()
-        challenge = self._generateChallenge(nonce, request)
+        seed = self._generateSeed()
+        challenge = self._generateChallenge(seed, request)
         return {
             "realm": self.realmName,
             "challenge": challenge,
@@ -114,36 +112,36 @@ class PubKeyCredentialFactory(object):
         return int(time.time())
 
 
-    def _generateNonce(self):
-        return secureRandom(self.nonceLength).encode("hex")
+    def _generateSeed(self):
+        return secureRandom(self.randLength).encode("hex")
 
-    def _generateChallenge(self, nonce, request):
+    def _generateChallenge(self, seed, request):
         client = request.getClientIP() or "0.0.0.0"
 
-        raw = "{0.realmName};{1};{2};{0._now}".format(self, nonce, client)
+        raw = "{0.realmName};{1};{2};{0._now}".format(self, seed, client)
         encoded = raw.encode("base64").replace("\n", "")
 
         key =  "{0};{1}".format(raw, self._secret)
-        signed = hashlib.new(self.hash, key).hexdigest()
+        signed = hashlib.new(self.digestAlgorithm, key).hexdigest()
 
-        return "{0}-{1}-{2}".format(signed, encoded, nonce)
+        return "-".join((signed, encoded, seed))
 
 
     def _verifyChallenge(self, challenge, request):
         client = request.getClientIP() or "0.0.0.0"
         try:
-            signature, encoded, nonce = challenge.split("-", 2)
+            signature, encoded, seed = challenge.split("-", 2)
         except ValueError:
             raise LoginFailed("Invalid challenge value.")
 
         raw = encoded.decode("base64")
 
         key = "{0};{1}".format(raw, self._secret)
-        signed = hashlib.new(self.hash, key).hexdigest()
+        signed = hashlib.new(self.digestAlgorithm, key).hexdigest()
         if signed != signature:
             raise LoginFailed("Invalid challenge value.")
 
-        pfx = "{0.realmName};{1};{2};".format(self, nonce, client)
+        pfx = "{0.realmName};{1};{2};".format(self, seed, client)
         if not raw.startswith(pfx):
             raise LoginFailed("Invalid challenge value.")
 
@@ -176,9 +174,7 @@ class PubKeyCredentialFactory(object):
             raise LoginFailed("Invalid username.")
 
         client = IP(request.getClientIP() or '0.0.0.0')
-        #blob = auth["blob"].decode("base64")
-        data = str("{0[username]};{0[realm]};{0[challenge]}"
-                   ).format(auth, self)
+        data = str("{0[username]};{0[realm]};{0[challenge]}").format(auth)
         sig = auth["signature"].decode("base64")
         creds = PrivateKey(auth["username"], client, data, sig)
 

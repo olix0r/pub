@@ -19,7 +19,7 @@ from jersey.auth.cred import IPrivateKey, PubKeyCredentialFactory
 class FakeCredentialFactory(PubKeyCredentialFactory):
     """
     A Fake Digest Credential Factory that generates a predictable
-    nonce and opaque
+    seed and time.
     """
 
     def __init__(self, *args, **kwargs):
@@ -27,8 +27,8 @@ class FakeCredentialFactory(PubKeyCredentialFactory):
         self._secret = "0"
 
 
-    def _generateNonce(self):
-        """Generate a static nonce"""
+    def _generateSeed(self):
+        """Generate a static seed"""
         return "178288758716122392881254770685"
 
 
@@ -80,9 +80,9 @@ class JerseyAuthTests(RequestMixin, TestCase):
     def assertChallengeOK(self, request):
         challenge = self.credentialFactory.getChallenge(request)
 
-        #self.assertEquals(challenge["allowed-methods"], "publickey")
         self.assertEquals(challenge["realm"], self.realm)
         self.assertIn("challenge", challenge)
+
         for v in challenge.values():
             self.assertNotIn("\n", v)
 
@@ -100,10 +100,9 @@ class JerseyAuthTests(RequestMixin, TestCase):
     def test_getChallenge(self):
         """
         The challenge issued by L{PubKeyCredentialFactory.getChallenge} must
-        include C{'qop'}, C{'realm'}, C{'algorithm'}, C{'nonce'}, and
-        C{'opaque'} keys.  The values for the C{'realm'} and C{'algorithm'}
-        keys must match the values supplied to the factory's initializer.
-        None of the values may have newlines in them.
+        include C{'realm'} and C{'challenge'} keys.  The values for the
+        C{'realm'} key must match the value supplied to the factory's
+        initializer.  None of the values may have newlines in them.
         """
         self.assertChallengeOK(self.request)
 
@@ -219,33 +218,33 @@ class JerseyAuthTests(RequestMixin, TestCase):
         """
         credentialFactory = FakeCredentialFactory(self.realm)
         c = self.credentialFactory.getChallenge(self.request)
-        nonce = self.getNonceFromChallenge(c["challenge"])
+        seed = self.getSeedFromChallenge(c["challenge"])
         client = self.request.getClientIP() or "0.0.0.0"
 
         exc = self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, 'badChallenge', self.request)
         self.assertEqual(str(exc), "Invalid challenge value.")
 
-        badData = "realm;{0};clientip;time".format(nonce
-                ).encode("base64").replace("\n", "")
-        badChallenge = "notasig-{1}-{0}".format(nonce, badData)
+        badData = "realm;{0};clientip;time".format(seed).encode("base64"
+                ).replace("\n", "")
+        badChallenge = "notasig-{1}-{0}".format(seed, badData)
 
         exc = self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
         self.assertEqual(str(exc), 'Invalid challenge value.')
 
 
-    def test_incompatibleNonce(self):
+    def test_badSeed(self):
         """
         L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the given
-        nonce from the response does not match the nonce encoded in the opaque.
+        seed from the response does not match the seed encoded in the opaque.
         """
         credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
 
-        badNonce = "1234567890"
+        badSeed = "1234567890"
         parts = c["challenge"].split("-", 2)
-        badChallenge = ";".join(parts[0:2] + [badNonce,])
+        badChallenge = ";".join(parts[0:2] + [badSeed,])
 
         exc = self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
@@ -271,8 +270,8 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.assertNotEqual(self.request.getClientIP(), badAddress.host)
 
         badRequest = self.makeRequest("GET", badAddress)
-        nonce = self.getNonceFromChallenge(c["challenge"])
-        badChallenge = credentialFactory._generateChallenge(nonce, badRequest)
+        seed = self.getSeedFromChallenge(c["challenge"])
+        badChallenge = credentialFactory._generateChallenge(seed, badRequest)
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
@@ -285,14 +284,14 @@ class JerseyAuthTests(RequestMixin, TestCase):
         """
         credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
-        nonce = self.getNonceFromChallenge(c["challenge"])
+        seed = self.getSeedFromChallenge(c["challenge"])
         client = self.clientAddress.host
 
         oldTime = "-137876876"
-        key = "{0.realm};{1};{2};{3}".format(self, nonce, client, oldTime)
+        key = "{0.realm};{1};{2};{3}".format(self, seed, client, oldTime)
         digest = sha512(key + credentialFactory._secret).hexdigest()
         ekey = key.encode("base64").replace("\n", "")
-        oldChallenge = "{0}-{1}-{2}".format(digest, ekey, nonce)
+        oldChallenge = "{0}-{1}-{2}".format(digest, ekey, seed)
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, oldChallenge, self.request)
@@ -306,13 +305,13 @@ class JerseyAuthTests(RequestMixin, TestCase):
         credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
         client = self.clientAddress.host
-        nonce = self.getNonceFromChallenge(c["challenge"])
+        seed = self.getSeedFromChallenge(c["challenge"])
         time = '0'
 
-        key = "{0.realm};{1};{2};{3}".format(self, nonce, client, time)
+        key = "{0.realm};{1};{2};{3}".format(self, seed, client, time)
         digest = sha512(key + "this is not the right pkey").hexdigest()
         eKey = key.encode("base64").replace("\n", "")
-        badChallenge = "-".join((digest, eKey, nonce))
+        badChallenge = "-".join((digest, eKey, seed))
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
@@ -356,8 +355,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
                 if v is not None])
 
 
-
-    def getNonceFromChallenge(self, challenge):
+    def getSeedFromChallenge(self, challenge):
         return challenge.split("-", 2)[2]
 
 
