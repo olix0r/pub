@@ -1,5 +1,4 @@
-import binascii, time
-from hashlib import sha512
+import binascii, hashlib, time
 
 from twisted.application.service import IService, Service
 
@@ -25,7 +24,7 @@ class IPrivateKey(Interface):
     """Based on twisted.cred.credentials.ISSHPrivateKey"""
     username = Attribute("Credential's username.")
     client = Attribute("Client IP")
-    blob = Attribute("The publc key blob as sent by the client.")
+    #blob = Attribute("The publc key blob as sent by the client.")
     data = Attribute("Signed data")
     signature = Attribute("The signed data.")
 
@@ -33,10 +32,10 @@ class IPrivateKey(Interface):
 class PrivateKey(object):
     implements(IPrivateKey)
 
-    def __init__(self, username, client, blob, data, signature):
+    def __init__(self, username, client, data, signature):
         self.username = username
         self.client = client
-        self.blob = blob
+        #self.blob = blob
         self.data = data
         self.signature = signature
 
@@ -47,7 +46,7 @@ class JerseyChecker(object):
     """
     implements(ICredentialsChecker)
 
-    credentialsInterfaces = (IPrivateKey, )
+    credentialInterfaces = (IPrivateKey, )
 
     def __init__(self, keyService):
         self.svc = keyService
@@ -58,98 +57,98 @@ class JerseyChecker(object):
         return UnauthorizedLogin(msg)
 
 
-    def getPublicKey(self, credentials):
-        try:
-            userKeys = yield self.svc.getPublicKeys(credentials.username)
-        except KeyError:
-            raise self.UnauthorizedLogin()
-
-        keyFound = False
-        while (not keyFound) and userKeys:
-            key = userKeys.pop()
-            keyFound = bool(key.blob() == credentials.blob)
-
-        if not keyFound:
-            assert len(userKeys) == 0
-            raise self.UnauthorizedLogin()
-
-        returnValue(key)
-
-
     @inlineCallbacks
     def requestAvatarId(self, credentials):
-        key = yield self.getPublicKey(credentials)
-        
-        if not key.verify(credentials.signature, credentials.data):
-            raise self.UnauthorizedLogin()
+        log.msg("{0} is requesting an avatar.".format(credentials.username))
+        userKeys = yield self.svc.getPublicKeys(credentials.username)
 
-        returnValue(credentials.username)
+        for key in userKeys:
+            if key.verify(credentials.signature, credentials.data):
+                returnValue(credentials.username)
+
+        raise self.UnauthorizedLogin("Invalid signature.")
 
 
 registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
 
 
 
-class JerseyCredentialFactory(object):
+class PubKeyCredentialFactory(object):
     implements(ICredentialFactory)
 
-    scheme = "JERSEY-AUTH"
+    scheme = "PUBKEY"
 
-    RAND_LEN = 32
-    SESSION_LENGTH = 5*60  # 5 minutes
+    nonceLength = 32
+    sessionLength = 5*60  # 5 minutes
+    hash = "sha256"
 
 
     def __init__(self, realmName):
         self.realmName = realmName
-        self._secret = secureRandom(self.RAND_LEN)
+        self._secret = secureRandom(self.nonceLength)
 
 
     def getChallenge(self, request):
         nonce = self._generateNonce()
-        signature = self._buildOpaque(nonce, request)
-
+        challenge = self._generateChallenge(nonce, request)
         return {
             "realm": self.realmName,
-            "allowed-methods": "publickey",
-            "nonce": nonce,
-            "opaque": signature,
+            "challenge": challenge,
             }
+
+
+    def decode(self, response, request):
+        auth = self._parseAuth(response)
+
+        try:
+            self._verifyChallenge(auth["challenge"], request)
+            creds = self._buildCredentials(auth, request)
+        except KeyError, ke:
+            raise LoginFailed("{0!r} not in authorization.".format(*ke.args))
+
+        return creds
 
 
     @property
     def _now(self):
         return int(time.time())
 
+
     def _generateNonce(self):
-        return secureRandom(self.RAND_LEN).encode('hex')
+        return secureRandom(self.nonceLength).encode("hex")
+
+    def _generateChallenge(self, nonce, request):
+        client = request.getClientIP() or "0.0.0.0"
+
+        raw = "{0.realmName};{1};{2};{0._now}".format(self, nonce, client)
+        encoded = raw.encode("base64").replace("\n", "")
+
+        key =  "{0};{1}".format(raw, self._secret)
+        signed = hashlib.new(self.hash, key).hexdigest()
+
+        return "{0}-{1}-{2}".format(signed, encoded, nonce)
 
 
-    def _buildOpaque(self, nonce, request):
-        client = request.getClientIP() or '0.0.0.0'
-        raw = "{0};{1};{2}".format(nonce, client, self._now)
-        signed = sha512("{0};{1}".format(raw, self._secret)).hexdigest()
-        encoded = raw.encode('base64').replace("\n", "")
-        return "{0}-{1}".format(signed, encoded)
-
-
-    def _verifyOpaque(self, opaque, nonce, request):
+    def _verifyChallenge(self, challenge, request):
         client = request.getClientIP() or "0.0.0.0"
         try:
-            signed, encoded = opaque.split("-")
+            signature, encoded, nonce = challenge.split("-", 2)
         except ValueError:
-            raise LoginFailed("Invalid opaque value.")
+            raise LoginFailed("Invalid challenge value.")
 
         raw = encoded.decode("base64")
-        reSigned = sha512("{0};{1}".format(raw, self._secret)).hexdigest()
-        if signed != reSigned:
-            raise LoginFailed("Invalid opaque value.")
 
-        pfx = "{0};{1};".format(nonce, client)
+        key = "{0};{1}".format(raw, self._secret)
+        signed = hashlib.new(self.hash, key).hexdigest()
+        if signed != signature:
+            raise LoginFailed("Invalid challenge value.")
+
+        pfx = "{0.realmName};{1};{2};".format(self, nonce, client)
         if not raw.startswith(pfx):
-            raise LoginFailed("Invalid opaque value.")
+            raise LoginFailed("Invalid challenge value.")
 
         t = int(raw[len(pfx):])
-        if t + self.SESSION_LENGTH < self._now:
+        if t + self.sessionLength < self._now:
             raise LoginFailed("Session expired.")
 
         return True
@@ -172,34 +171,16 @@ class JerseyCredentialFactory(object):
 
 
     def _buildCredentials(self, auth, request):
+        log.msg("Building credentials for: {0!r}".format(auth))
         if not auth["username"]:
             raise LoginFailed("Invalid username.")
 
-        if auth["method"] == "publickey":
-            client = IP(request.getClientIP() or '0.0.0.0')
-            blob = auth["blob"].decode("base64")
-            data = str("{0[username]};{1};{0[realm]};{0[nonce]};{0[opaque]};{2}"
-                       ).format(auth, client, blob, self)
-            sig = auth["signature"].decode("base64")
-            creds = PrivateKey(auth["username"], client, blob, data, sig)
-
-        else:
-            e = "Unexpected authentication method: {0[method]}".format(auth)
-            raise LoginFailed(e)
-
-        return creds
-
-
-    def decode(self, response, request):
-        auth = self._parseAuth(response)
-        client = request.getClientIP() or "0.0.0.0"
-
-        try:
-            self._verifyOpaque(auth["opaque"], auth["nonce"], request)
-            creds = self._buildCredentials(auth, request)
-
-        except KeyError, ke:
-            raise LoginFailed("{0!r} not in authorization.".format(*ke.args))
+        client = IP(request.getClientIP() or '0.0.0.0')
+        #blob = auth["blob"].decode("base64")
+        data = str("{0[username]};{0[realm]};{0[challenge]}"
+                   ).format(auth, self)
+        sig = auth["signature"].decode("base64")
+        creds = PrivateKey(auth["username"], client, data, sig)
 
         return creds
 

@@ -24,13 +24,16 @@ class DirectoryBackedKeyService(MultiService):
     implements(IPublicKeyService)
 
     def __init__(self, keyDir):
-        self.keyDir = k = FilePath(keyDir)
-        assert k.isdir()
+        MultiService.__init__(self)
+        if not isinstance(keyDir, FilePath) :
+            keyDir = FilePath(keyDir)
+        assert keyDir.isdir()
+        self.keyDir = keyDir
 
 
     def _openUserFile(self, user):
         try:
-            child = self.keyDir.child(user)
+            child = self.keyDir.child(user+".pub")
             return child.open()
 
         except IOError:

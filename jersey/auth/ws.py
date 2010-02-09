@@ -2,12 +2,16 @@
 
 """
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+import json
 
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.python import log
+from twisted.python.components import registerAdapter
+
+from twisted.web.client import HTTPClientFactory
 from twisted.web.guard import HTTPAuthSessionWrapper
 from twisted.web.resource import IResource, Resource
 from twisted.web.util import DeferredResource
-
 
 from jersey.auth.service import IPublicKeyService
 
@@ -32,9 +36,21 @@ class JerseyResource(Resource):
 
 class PublicKeyServiceResource(JerseyResource):
 
-    def __init__(self, keyService):
-        self.keyService = keyService
+    def __init__(self, keySvc):
+        JerseyResource.__init__(self)
+        self.keySvc = keySvc
+
+        self.putChild("", self)
         self.putChild("users", UsersResource(keySvc))
+
+
+    def render(self, request):
+        uri = request.URLPath().here()
+        return json.dumps({"links": [
+                {"rel":"self", "href":"{0}".format(uri), },
+                {"rel":"User keys", "href":"{0}users".format(uri), },
+                ]}) + "\n"
+
 
 registerAdapter(PublicKeyServiceResource, IPublicKeyService, IResource)
 
@@ -43,6 +59,7 @@ registerAdapter(PublicKeyServiceResource, IPublicKeyService, IResource)
 class UsersResource(JerseyResource):
 
     def __init__(self, keySvc):
+        JerseyResource.__init__(self)
         self.keySvc = keySvc
 
     def getChild(self, name, request):
@@ -52,18 +69,21 @@ class UsersResource(JerseyResource):
     @inlineCallbacks
     def _getDeferredChild(self, name, request):
         try:
-            keys = yield self.keyService.getPublicKeys(name)
+            keys = yield self.keySvc.getPublicKeys(name)
+
         except KeyError:
             baseName, sfx = self.splitResourceSuffix(name)
             try:
-                keys = yield self.keyService.getPublicKeys(name)
+                keys = yield self.keySvc.getPublicKeys(baseName)
 
             except KeyError:
                 resource = Resource.getChild(self, name, request)
+
             else:
                 resource = self.buildKeyResource(baseName, keys, sfx)
                 if not resource.suffixIsSupported(sfx):
                     resource = Resource.getChild(self, name, request)
+
         else:
             resource = self.buildKeyResource(name, keys)
 
@@ -78,16 +98,12 @@ class UsersResource(JerseyResource):
 
 class UserPublicKeysResource(JerseyResource):
 
-    suffixTypes = {
-        "txt":  "text/plain",
-        "json": "application/json",
-        }
 
     def __init__(self, user, keys, suffix=None):
-        self.user = self.user
+        JerseyResource.__init__(self)
+        self.user = user
         self.keys = keys
         self.suffix = suffix
-
 
 
     def determineResponseContentType(self, request):
@@ -96,46 +112,62 @@ class UserPublicKeysResource(JerseyResource):
         #    if accept:
         #        contentType = accept
         #
-        contentType = self.suffixTypes.get(contentType, "text/plain")
-
-        assert contentType is not None
-        return contentType
-
+        return self.suffixTypes.get(self.suffix, "text/plain")
 
 
     def render_GET(self, request):
         contentType = self.determineResponseContentType(request)
         assert contentType in self.suffixTypes.values()
-
         if contentType == "application/json":
             content = self.jsonizeKeys()
         else:
             content = self.textualizeKeys()
-
         request.setHeader("Content-type", contentType)
         return content
 
 
+    suffixTypes = {
+        "txt":  "text/plain",
+        "json": "application/json",
+        }
+
     # TODO Use a JSONEncoder object to build key-dicts.
     def jsonizeKeys(self):
-        from base64 import encodestring as b64
-        def _jsonizeKey(key):
-            return {"type": key.sshType(),
-                    "blob": b64(key.blob()).replace("\n", ""), }
-
+        def jsonizeKey(key):
+            blob = key.blob().encode("base64").replace("\n", "")
+            return {"type":key.sshType(), "blob":blob, }
         return json.dumps({
-            "user": self.user.name,
-            "keys": map(_wjsonizeKey, self.keys),
-            })
+            "user": self.user,
+            "keys": map(jsonizeKey, self.keys),
+            })+"\n"
 
 
     def textualizeKeys(self):
-        userHeader = "# {0.user.name}".format(self)
-        keyStr = "\n".join([k.toString() for k in self.keys]) + "\n"
-        return userHeader + keyStr
+        def textualizeKey(k):
+            return "{0} {1}".format(k.toString("OPENSSH"), self.user)
+        keys = map(textualizeKey, self.keys)
+        return "\n".join(keys) + "\n"
+
+    formatters = {
+        "text/plain": textualizeKeys,
+        "application/json": jsonizeKeys,
+        }
 
 
 
 class JerseyGuard(HTTPAuthSessionWrapper):
-    pass
+
+    def _login(self, creds):
+        log.msg("Logging in: {0!r}".format(creds))
+        return HTTPAuthSessionWrapper._login(self, creds)
+
+
+
+    def _selectParseHeader(self, header):
+        scheme, elements = header.split(' ', 1)
+        for fact in self._credentialFactories:
+            if fact.scheme.lower() == scheme.lower():
+                return (fact, elements)
+        return (None, None)
+
 

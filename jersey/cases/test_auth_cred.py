@@ -12,18 +12,18 @@ from twisted.web.test.test_httpauth import RequestMixin
 
 from zope.interface.verify import verifyObject
 
-from jersey.auth.cred import IPrivateKey, JerseyCredentialFactory
+from jersey.auth.cred import IPrivateKey, PubKeyCredentialFactory
 
 
 
-class FakeJerseyCredentialFactory(JerseyCredentialFactory):
+class FakeCredentialFactory(PubKeyCredentialFactory):
     """
     A Fake Digest Credential Factory that generates a predictable
     nonce and opaque
     """
 
     def __init__(self, *args, **kwargs):
-        super(FakeJerseyCredentialFactory, self).__init__(*args, **kwargs)
+        super(FakeCredentialFactory, self).__init__(*args, **kwargs)
         self._secret = "0"
 
 
@@ -40,86 +40,6 @@ class FakeJerseyCredentialFactory(JerseyCredentialFactory):
 
 
 
-class SimpleJerseyAuthTestCase(RequestMixin, TestCase):
-    """
-    Public key authentication tests which use twisted.web.http.Request.
-    """
-
-    suppress = [
-        util.suppress(module="Crypto.Hash", category=DeprecationWarning),
-        ]
-
-    def setUp(self):
-        self.realm = "animals@zoo.example.com"
-        self.credentialFactory = JerseyCredentialFactory(self.realm)
-        self.request = self.makeRequest()
-
-
-    def assertChallengeOK(self, request):
-        challenge = self.credentialFactory.getChallenge(request)
-
-        self.assertEquals(challenge["allowed-methods"], "publickey")
-        self.assertEquals(challenge["realm"], self.realm)
-        self.assertIn("nonce", challenge)
-        self.assertIn("opaque", challenge)
-        for v in challenge.values():
-            self.assertNotIn("\n", v)
-
-        return challenge
-
-
-    def test_decode(self):
-        """
-        L{digest.JerseyCredentialFactory.decode} calls the C{decode} method on
-        L{twisted.cred.digest.JerseyCredentialFactory} with the HTTP method and
-        host of the request.
-        """
-        host = '169.254.0.1'
-        method = 'GET'
-        done = [False]
-        response = object()
-        def check(_response, _method, _host):
-            self.assertEqual(response, _response)
-            self.assertEqual(method, _method)
-            self.assertEqual(host, _host)
-            done[0] = True
-
-        self.patch(self.credentialFactory.digest, 'decode', check)
-        req = self.makeRequest(method, IPv4Address('TCP', host, 81))
-        self.credentialFactory.decode(response, req)
-        self.assertTrue(done[0])
-    test_decode.skip = "TODO"
-
-
-    def test_interface(self):
-        """
-        L{JerseyCredentialFactory} implements L{ICredentialFactory}.
-        """
-        self.assertTrue(
-            verifyObject(ICredentialFactory, self.credentialFactory))
-
-
-    def test_getChallenge(self):
-        """
-        The challenge issued by L{JerseyCredentialFactory.getChallenge} must
-        include C{'qop'}, C{'realm'}, C{'algorithm'}, C{'nonce'}, and
-        C{'opaque'} keys.  The values for the C{'realm'} and C{'algorithm'}
-        keys must match the values supplied to the factory's initializer.
-        None of the values may have newlines in them.
-        """
-        self.assertChallengeOK(self.request)
-
-
-    def test_getChallengeWithoutClientIP(self):
-        """
-        L{JerseyCredentialFactory.getChallenge} can issue a challenge even if
-        the L{Request} it is passed returns C{None} from C{getClientIP}.
-        """
-        request = self.makeRequest("GET", None)
-        self.assertChallengeOK(request)
-
-
-
 class JerseyAuthTests(RequestMixin, TestCase):
 
     suppress = [
@@ -129,7 +49,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
     def setUp(self):
         """
-        Create a JerseyCredentialFactory for testing
+        Create a PubKeyCredentialFactory for testing
         """
         from twisted.conch.ssh.keys import Key
 
@@ -146,25 +66,65 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.keys = dict()
         for animal in ("antelope", "monkey"):
             self.keys[animal] = KeyPair(
-                Key.fromFile(kd.child("priv").child(animal).path),
-                Key.fromFile(kd.child("pub").child(animal).path),
+                Key.fromFile(kd.child(animal).path),
+                Key.fromFile(kd.child(animal+".pub").path),
                 )
 
         self.clientAddress = IPv4Address('TCP', '10.2.3.4', 43125)
         self.request = self.makeRequest("GET", self.clientAddress)
 
         self.realm = "animals@zoo.test"
-        self.credentialFactory = JerseyCredentialFactory(self.realm)
+        self.credentialFactory = PubKeyCredentialFactory(self.realm)
+
+
+    def assertChallengeOK(self, request):
+        challenge = self.credentialFactory.getChallenge(request)
+
+        #self.assertEquals(challenge["allowed-methods"], "publickey")
+        self.assertEquals(challenge["realm"], self.realm)
+        self.assertIn("challenge", challenge)
+        for v in challenge.values():
+            self.assertNotIn("\n", v)
+
+        return challenge
+
+
+    def test_interface(self):
+        """
+        L{PubKeyCredentialFactory} implements L{ICredentialFactory}.
+        """
+        self.assertTrue(
+            verifyObject(ICredentialFactory, self.credentialFactory))
+
+
+    def test_getChallenge(self):
+        """
+        The challenge issued by L{PubKeyCredentialFactory.getChallenge} must
+        include C{'qop'}, C{'realm'}, C{'algorithm'}, C{'nonce'}, and
+        C{'opaque'} keys.  The values for the C{'realm'} and C{'algorithm'}
+        keys must match the values supplied to the factory's initializer.
+        None of the values may have newlines in them.
+        """
+        self.assertChallengeOK(self.request)
+
+
+    def test_getChallengeWithoutClientIP(self):
+        """
+        L{PubKeyCredentialFactory.getChallenge} can issue a challenge even if
+        the L{Request} it is passed returns C{None} from C{getClientIP}.
+        """
+        request = self.makeRequest("GET", None)
+        self.assertChallengeOK(request)
 
 
     def test_responseWithoutClientIP(self):
         """
-        L{JerseyCredentialFactory.decode} accepts a digest challenge response
+        L{PubKeyCredentialFactory.decode} accepts a digest challenge response
         even if the client address it is passed is C{None}.
         """
         req = self.makeRequest()
         c = self.credentialFactory.getChallenge(req)
-        auth = self.buildAuth(nonce=c["nonce"], opaque=c["opaque"])
+        auth = self.buildAuth(challenge=c["challenge"])
         auth["signature"] = self.signAuth(auth, req)
         response = self.formatResponse(**auth)
 
@@ -174,11 +134,11 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
     def test_multiResponse(self):
         """
-        L{JerseyCredentialFactory.decode} handles multiple responses to a
+        L{PubKeyCredentialFactory.decode} handles multiple responses to a
         single challenge.
         """
         c = self.credentialFactory.getChallenge(self.request)
-        auth = self.buildAuth(nonce=c["nonce"], opaque=c["opaque"])
+        auth = self.buildAuth(challenge=c["challenge"])
         auth["signature"] = self.signAuth(auth, self.request)
         response = self.formatResponse(**auth)
 
@@ -189,37 +149,15 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.assertSignature(creds)
 
 
-    def test_failsWithDifferentMethod(self):
-        """
-        L{JerseyCredentialFactory.decode} returns an L{IUsernameHashedPassword}
-        provider which rejects a correct password for the given user if the
-        challenge response request is made using a different HTTP method than
-        was used to request the initial challenge.
-        """
-        c = self.credentialFactory.getChallenge(self.request)
-
-        clientResponse = self.formatResponse(
-            nonce=c['nonce'],
-            response=self.getDigestResponse(challenge, nc),
-            nc=nc,
-            opaque=challenge['opaque'])
-        creds = self.credentialFactory.decode(clientResponse, 'POST',
-                                              self.clientAddress.host)
-        self.assertFalse(creds.checkPassword(self.password))
-        self.assertFalse(creds.checkPassword(self.password + 'wrong'))
-
-    test_failsWithDifferentMethod.skip = "Method not in auth header."
-
-
     def test_noUsername(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} if the response
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} if the response
         has no username field or if the username field is empty.
         """
         c = self.credentialFactory.getChallenge(self.request)
 
         # Check for no username
-        auth = self.buildAuth(nonce=c["nonce"], opaque=c["opaque"])
+        auth = self.buildAuth(challenge=c["challenge"])
         del auth["username"]
         rsp = self.formatResponse(**auth)
         e = self.assertRaises(LoginFailed,
@@ -234,41 +172,26 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.assertEqual(str(e), "Invalid username.")
 
 
-    def test_noNonce(self):
+    def test_noChallenge(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} if the response
-        has no nonce.
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} if the response
+        has no challenge.
         """
         c = self.credentialFactory.getChallenge(self.request)
-
-        # Check for no username
-        auth = self.buildAuth(opaque=c["opaque"])
+        auth = self.buildAuth()
         rsp = self.formatResponse(**auth)
         e = self.assertRaises(LoginFailed,
             self.credentialFactory.decode, rsp, self.request)
-        self.assertEqual(str(e), "'nonce' not in authorization.")
+        self.assertEqual(str(e), "'challenge' not in authorization.")
 
 
-    def test_noOpaque(self):
+    def test_checkSignature(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} if the response
-        has no opaque.
-        """
-        c = self.credentialFactory.getChallenge(self.request)
-        auth = self.buildAuth(nonce=c["nonce"])
-        rsp = self.formatResponse(**auth)
-        e = self.assertRaises(LoginFailed,
-            self.credentialFactory.decode, rsp, self.request)
-        self.assertEqual(str(e), "'opaque' not in authorization.")
-
-
-    def test_checkHash(self):
-        """
-        L{JerseyCredentialFactory.decode} returns an L{IUsernameDigestHash}
+        L{PubKeyCredentialFactory.decode} returns an L{IUsernameDigestHash}
         provider which can verify a hash of the form 'username:realm:password'.
         """
         c = self.credentialFactory.getChallenge(self.request)
-        auth = self.buildAuth(nonce=c["nonce"], opaque=c["opaque"])
+        auth = self.buildAuth(challenge=c["challenge"])
         auth["signature"] = self.signAuth(auth, self.request)
         response = self.formatResponse(**auth)
 
@@ -277,82 +200,70 @@ class JerseyAuthTests(RequestMixin, TestCase):
         try:
             verifyObject(IPrivateKey, creds)
         except:
-            self.fail("{0.__class__.__name__} is not a private key".format(creds))
-
-        safeData = str("{0[username]};{1};{0[realm]};"
-                       "{0[nonce]};{0[opaque]};{0[blob]}"
-                       ).format(auth, creds.client)
-        digest = sha512(safeData).hexdigest()
-        log.msg("Verifying data: {0} ({1}) ".format(safeData, digest))
+            err = "{0.__class__.__name__} is not a private key".format(creds)
+            self.fail(err)
 
         # Verify this signature with antelope's key.. It should pass.
         self.assertSignature(creds)
 
         # Try to verify this signature with monkey's key.. It should fail.
         badKey = self.keys["monkey"].pub
-        self.assertNotEquals(badKey.blob(), creds.blob)
+        #self.assertNotEquals(badKey.blob(), creds.blob)
         self.assertFalse(badKey.verify(creds.signature, creds.data))
 
 
-    def test_invalidOpaque(self):
+    def test_invalidChallenge(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} when the opaque
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the opaque
         value does not contain all the required parts.
         """
-        credentialFactory = FakeJerseyCredentialFactory(self.realm)
+        credentialFactory = FakeCredentialFactory(self.realm)
         c = self.credentialFactory.getChallenge(self.request)
-
+        nonce = self.getNonceFromChallenge(c["challenge"])
         client = self.request.getClientIP() or "0.0.0.0"
-        exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, 'badOpaque', c['nonce'],
-            self.request)
-        self.assertEqual(str(exc), "Invalid opaque value.")
-
-        badOpaque = 'foo-' + 'nonce;clientip'.encode("base64").replace("\n","")
 
         exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, badOpaque, c['nonce'],
-            self.request)
-        self.assertEqual(str(exc), 'Invalid opaque value.')
+            credentialFactory._verifyChallenge, 'badChallenge', self.request)
+        self.assertEqual(str(exc), "Invalid challenge value.")
+
+        badData = "realm;{0};clientip;time".format(nonce
+                ).encode("base64").replace("\n", "")
+        badChallenge = "notasig-{1}-{0}".format(nonce, badData)
 
         exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, '', c['nonce'], self.request)
-        self.assertEqual(str(exc), 'Invalid opaque value.')
-
-        badOpaque = 'foo-' + "{0};{1}".format(c['nonce'], client
-                    ).encode("base64").replace("\n", "")
-        exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, badOpaque, c['nonce'],
-            self.request)
-        self.assertEqual(str(exc), 'Invalid opaque value.')
+            credentialFactory._verifyChallenge, badChallenge, self.request)
+        self.assertEqual(str(exc), 'Invalid challenge value.')
 
 
     def test_incompatibleNonce(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} when the given
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the given
         nonce from the response does not match the nonce encoded in the opaque.
         """
-        credentialFactory = FakeJerseyCredentialFactory(self.realm)
+        credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
 
-        badOpaque = credentialFactory._buildOpaque('1234567890', self.request)
+        badNonce = "1234567890"
+        parts = c["challenge"].split("-", 2)
+        badChallenge = ";".join(parts[0:2] + [badNonce,])
 
         exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, badOpaque, c['nonce'], self.request)
-        self.assertEqual(str(exc), "Invalid opaque value.")
+            credentialFactory._verifyChallenge, badChallenge, self.request)
+        self.assertEqual(str(exc), "Invalid challenge value.")
 
+        badChallenge = ";".join(parts[0:2] + ["",])
         exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, badOpaque, "", self.request)
-        self.assertEqual(str(exc), "Invalid opaque value.")
+            credentialFactory._verifyChallenge, badChallenge, self.request)
+        self.assertEqual(str(exc), "Invalid challenge value.")
 
 
     def test_incompatibleClientIP(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} when the
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the
         request comes from a client IP other than what is encoded in the
         opaque.
         """
-        credentialFactory = FakeJerseyCredentialFactory(self.realm)
+        credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
 
         badAddress = IPv4Address("TCP", "10.0.0.1", 43210)
@@ -360,49 +271,51 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.assertNotEqual(self.request.getClientIP(), badAddress.host)
 
         badRequest = self.makeRequest("GET", badAddress)
-        badOpaque = credentialFactory._buildOpaque(c['nonce'], badRequest)
+        nonce = self.getNonceFromChallenge(c["challenge"])
+        badChallenge = credentialFactory._generateChallenge(nonce, badRequest)
 
-        self.assertRaises(
-            LoginFailed,
-            credentialFactory._verifyOpaque, badOpaque, c['nonce'], self.request)
+        self.assertRaises(LoginFailed,
+            credentialFactory._verifyChallenge, badChallenge, self.request)
 
 
-    def test_oldNonce(self):
+    def test_oldChallenge(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} when the given
-        opaque is older than C{JerseyCredentialFactory.CHALLENGE_LIFETIME_SECS}
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the given
+        opaque is older than C{PubKeyCredentialFactory.CHALLENGE_LIFETIME_SECS}
         """
-        credentialFactory = FakeJerseyCredentialFactory(self.realm)
+        credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
-
+        nonce = self.getNonceFromChallenge(c["challenge"])
         client = self.clientAddress.host
-        key = "%s;%s;%s" % (c['nonce'], client, '-137876876')
+
+        oldTime = "-137876876"
+        key = "{0.realm};{1};{2};{3}".format(self, nonce, client, oldTime)
         digest = sha512(key + credentialFactory._secret).hexdigest()
         ekey = key.encode("base64").replace("\n", "")
-        oldOpaque = '%s-%s' % (digest, ekey)
+        oldChallenge = "{0}-{1}-{2}".format(digest, ekey, nonce)
 
         self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, oldOpaque, c['nonce'],
-            self.request)
+            credentialFactory._verifyChallenge, oldChallenge, self.request)
 
 
-    def test_mismatchedOpaqueChecksum(self):
+    def test_mismatchedChallengeChecksum(self):
         """
-        L{JerseyCredentialFactory.decode} raises L{LoginFailed} when the opaque
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the opaque
         checksum fails verification.
         """
-        credentialFactory = FakeJerseyCredentialFactory(self.realm)
+        credentialFactory = FakeCredentialFactory(self.realm)
         c = credentialFactory.getChallenge(self.request)
         client = self.clientAddress.host
+        nonce = self.getNonceFromChallenge(c["challenge"])
+        time = '0'
 
-        key = '%s;%s;%s' % (c['nonce'], client, '0')
-        digest = sha512(key + 'this is not the right pkey').hexdigest()
+        key = "{0.realm};{1};{2};{3}".format(self, nonce, client, time)
+        digest = sha512(key + "this is not the right pkey").hexdigest()
         eKey = key.encode("base64").replace("\n", "")
-        badChecksum = '%s-%s' % (digest, eKey)
+        badChallenge = "-".join((digest, eKey, nonce))
 
         self.assertRaises(LoginFailed,
-            credentialFactory._verifyOpaque, badChecksum, c['nonce'],
-            self.request)
+            credentialFactory._verifyChallenge, badChallenge, self.request)
 
 
     def buildAuth(self, **kw):
@@ -410,12 +323,8 @@ class JerseyAuthTests(RequestMixin, TestCase):
             kw['username'] = self.username
         if 'realm' not in kw:
             kw['realm'] = self.realm
-        if 'method' not in kw:
-            kw['method'] = "publickey"
 
         privKey = kw.get("privKey", self.keys["antelope"].priv)
-        if 'blob' not in kw:
-            kw['blob'] = privKey.blob().encode("base64").replace("\n", "")
 
         return kw
 
@@ -424,28 +333,18 @@ class JerseyAuthTests(RequestMixin, TestCase):
         """
         Calculate the response for the given challenge
         """
-        client = request.getClientIP() or "0.0.0.0"
-        blob = auth["blob"].decode("base64")
-        data = str("{0[username]};{1};{0[realm]};"
-                   "{0[nonce]};{0[opaque]};{2}"
-                   ).format(auth, client, blob)
+        data = str("{0[username]};{0[realm]};{0[challenge]}"
+                   ).format(auth)
 
         kp = self.keys[auth["username"]]
         signature = kp.priv.sign(data)
         self.assertTrue(kp.pub.verify(signature, data))
-
-        safeData = str("{0[username]};{1};{0[realm]};"
-                       "{0[nonce]};{0[opaque]};{0[blob]}"
-                       ).format(auth, client)
-        digest = sha512(safeData).hexdigest()
-        log.msg("Signed data: {0} ({1}) ".format(safeData, digest))
 
         return signature.encode("base64").replace("\n", "")
 
 
     def assertSignature(self, creds):
         key = self.keys[creds.username].pub
-        self.assertEquals(key.blob(), creds.blob)
         self.assertTrue(key.verify(creds.signature, creds.data))
 
 
@@ -455,5 +354,10 @@ class JerseyAuthTests(RequestMixin, TestCase):
                 "{0}={2}{1}{2}".format(k, v, quote)
                 for (k, v) in kw.iteritems()
                 if v is not None])
+
+
+
+    def getNonceFromChallenge(self, challenge):
+        return challenge.split("-", 2)[2]
 
 

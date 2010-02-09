@@ -33,6 +33,7 @@ setup(
         "jersey",
         "jersey.cases",
         "jersey.auth",
+        "twisted.plugins",
         ],
     py_modules = [
         "jersey.auth.cred",
@@ -46,7 +47,7 @@ setup(
             "animals_keys/antelope",
             "animals_keys/monkey",
             ],
-        "twisted": ["plugins/jersey-keys.py",],
+        "twisted.plugins": ["jersey-keys.py",],
         },
 
     )

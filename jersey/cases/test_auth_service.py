@@ -27,7 +27,7 @@ class AnimalKeysTestBase(object):
 
     def setUp(self):
         testDir, testFile = os.path.split(__file__)
-        self.keyDir = kd = FilePath(os.path.join(testDir, "animals", "pub"))
+        self.keyDir = kd = FilePath(os.path.join(testDir, "animals"))
         self.assertTrue(kd.isdir(), "No pub key dir: {0.path}".format(kd))
 
 

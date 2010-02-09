@@ -1,25 +1,29 @@
+from os import geteuid
 from time import time
 
 from twisted.application.service import IServiceMaker, MultiService
 from twisted.application.internet import TCPServer
 
+from twisted.cred.checkers import ICredentialsChecker
 from twisted.cred.portal import IRealm, Portal
 
 from twisted.plugin import IPlugin
+from twisted.python import log
 from twisted.python.components import registerAdapter
 from twisted.python.filepath import FilePath
-from twisted.python.usage import Options
+from twisted.python.usage import Options, UsageError
 
 from twisted.web.resource import IResource, Resource
-from twisted.web.guard import HTTPAuthSessionWrapper
 from twisted.web.server import Site
 
 from zope.interface import implements
 
-from jersey.auth.cred import JerseyCredentialFactory
+from jersey.auth.cred import PubKeyCredentialFactory
 from jersey.auth.service import IPublicKeyService, DirectoryBackedKeyService
 import jersey.auth.ws
 
+
+WWW_PORT = 80 if geteuid() == 0 else 8080
 
 
 class User(object):
@@ -47,8 +51,9 @@ class Realm(object):
 
 
     def requestAvatar(self, avatarId, _mind, *interfaces):
+        log.msg("{0} is requesting an avatar.".format(avatarId))
         if IResource in interfaces:
-            if avatarId in users:
+            if avatarId in self.users:
                 user = self.users[avatarId]
             else:
                 user = self.users[avatarId] = User(avatarId)
@@ -60,7 +65,7 @@ class Realm(object):
         raise NotImplementedError()
 
 
-registerAdapter(IPublicKeyService, IRealm, Realm)
+registerAdapter(Realm, IPublicKeyService, IRealm)
 
 
 
@@ -70,16 +75,21 @@ class AuthorizedResource(Resource):
         self.user = user
 
     def render(self, request):
-        pass
+        return "YAY! YOU FOUND ME\n"
 
 
 
 class JerseyKeysOptions(Options):
-
     optParameters = [
-        ["keydir", "K", "Public key directory", "keys.pub", FilePath],
-        ["port", "p", "Port", 8080, int],
+        ["keydir", "K", "keys.pub", "Public key directory"],
+        ["port", "p", WWW_PORT, "Port", int],
         ]
+
+
+    def postOptions(opts):
+        opts["keydir"] = kd = FilePath(opts["keydir"])
+        if not kd.isdir():
+            raise UsageError("{0}: Not a directory".format(kd.path))
 
 
 
@@ -98,7 +108,6 @@ class ServiceMaker(object):
         keySvc.setServiceParent(svc)
         
         portal = self.buildPortal(keySvc)
-
         site = self.buildSite(keySvc, portal)
 
         www = TCPServer(options["port"], site)
@@ -116,13 +125,17 @@ class ServiceMaker(object):
     def buildSite(self, keySvc, portal):
         root = IResource(keySvc)
     
-        authorized = HTTPAuthSessionWrapper(portal, [c,])
+        factories = [
+            PubKeyCredentialFactory("users@keys.jersey.ops.yahoo.com"),
+            ]
+        authorized = jersey.auth.ws.JerseyGuard(portal, factories)
+
         root.putChild("authorisation", authorized)
         root.putChild("authorization", authorized)
 
         return Site(root)
 
 
-serviceMaker = ServiceMaker()
+JerseyKeys = ServiceMaker()
 
 
