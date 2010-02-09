@@ -243,7 +243,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
         c = credentialFactory.getChallenge(self.request)
 
         badSeed = "1234567890"
-        parts = c["challenge"].split("-", 2)
+        parts = c["challenge"].split(";", 2)
         badChallenge = ";".join(parts[0:2] + [badSeed,])
 
         exc = self.assertRaises(LoginFailed,
@@ -311,7 +311,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
         key = "{0.realm};{1};{2};{3}".format(self, seed, client, time)
         digest = sha512(key + "this is not the right pkey").hexdigest()
         eKey = key.encode("base64").replace("\n", "")
-        badChallenge = "-".join((digest, eKey, seed))
+        badChallenge = ";".join((digest, eKey, seed))
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
@@ -348,7 +348,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
 
     def formatResponse(self, quotes=True, **kw):
-        quote = '"' if quotes is True else ''
+        quote = '"' if quotes is True else str()
         return ', '.join([
                 "{0}={2}{1}{2}".format(k, v, quote)
                 for (k, v) in kw.iteritems()
@@ -356,6 +356,6 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
 
     def getSeedFromChallenge(self, challenge):
-        return challenge.split("-", 2)[2]
+        return challenge.split(";", 2)[2]
 
 

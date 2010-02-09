@@ -74,7 +74,7 @@ registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
 class PubKeyCredentialFactory(object):
     implements(ICredentialFactory)
 
-    scheme = "CRED.JERSEY.OPS.YAHOO.COM"
+    scheme = "COM.YAHOO.OPS.JERSEY.CRED"
 
     randLength = 32
     sessionLength = 5*60  # 5 minutes
@@ -124,13 +124,13 @@ class PubKeyCredentialFactory(object):
         key =  "{0};{1}".format(raw, self._secret)
         signed = hashlib.new(self.digestAlgorithm, key).hexdigest()
 
-        return "-".join((signed, encoded, seed))
+        return ";".join((signed, encoded, seed))
 
 
     def _verifyChallenge(self, challenge, request):
         client = request.getClientIP() or "0.0.0.0"
         try:
-            signature, encoded, seed = challenge.split("-", 2)
+            signature, encoded, seed = challenge.split(";", 2)
         except ValueError:
             raise LoginFailed("Invalid challenge value.")
 
