@@ -1,0 +1,278 @@
+import os, sys, warnings
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module="Crypto.Hash",
+    )
+
+from twisted.application.app import (ApplicationRunner, ReactorSelectionMixin,
+        startApplication)
+from twisted.application.service import Application, MultiService
+from twisted.conch.ssh.agent import SSHAgentClient, SSHAgentServer
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.protocol import ClientCreator
+from twisted.protocols.loopback import loopbackAsync
+from twisted.python import log, usage
+from twisted.python.filepath import FilePath
+
+from pendrell.agent import Agent
+from pendrell.auth import Authenticator
+from pendrell.error import WebError, UnauthorizedResponse
+from pendrell.util import URLPath
+
+
+class AuthAgentClient(SSHAgentClient):
+
+    def __init__(self, *args, **kw):
+        SSHAgentClient.__init__(self, *args, **kw)
+        self.keys = []
+
+
+    @inlineCallbacks
+    def requestIdentities(self):
+        self.keys = k = yield SSHAgentClient.requestIdentities(self)
+        returnValue(k)
+
+
+
+
+class PubKeyAuthenticator(Authenticator):
+
+    def __init__(self, username, agent, pubKey):
+        self.username = username
+        self.agent = agent
+        self.pubKey = pubKey
+
+
+    @inlineCallbacks
+    def authorize_pubkey(self, params):
+        cred = {"nonce": params["nonce"],
+                "opaque": params["opaque"],
+                "realm": params["realm"],
+                "username": self.username,
+                }
+        cred["signature"] = yield self.signAuth(cred)
+
+        auth = ", ".join(["{0}=\"{1}\"".format(*kv) for kv in cred.items()])
+        returnValue("PUBKEY {0}".format(auth))
+
+
+    @inlineCallbacks
+    def signAuth(self, auth):
+        data = "{0[username]};{0[realm]};{0[nonce]};{0[opaque]}".format(auth)
+        signature = yield self.agent.signData(self.pubKey, data)
+        returnValue(signature.encode("base64").replace("\n", ""))
+
+
+
+class Options(usage.Options, ReactorSelectionMixin):
+
+    optParameters = [
+        ["user", "u", os.getlogin(), "Login user"],
+        ["auth-sock", "A", os.getenv("JERSEY_AUTH_SOCK"),
+            "Authentication socket"],
+        ]
+
+    def parseArgs(self, uri):
+        try:
+            self["uri"] = URLPath.fromString(uri)
+        except Exception, e:
+            raise usage.error("{0}: Invalid URI: {1}".format(uri, *e.args))
+
+
+
+class ClientService(MultiService):
+
+    def __init__(self, config):
+        MultiService.__init__(self)
+
+        self.config = config
+        self.uri = config["uri"]
+        self.username = config["user"]
+        self.authSock = config["auth-sock"]
+
+
+    def buildAuthAgent(self):
+        from twisted.internet import reactor
+        creator = ClientCreator(reactor, AuthAgentClient)
+        return creator.connectUNIX(self.authSock)
+
+
+    def buildWebAgent(self):
+        return Agent()
+
+
+    @inlineCallbacks
+    def startService(self):
+        from twisted.internet import reactor
+        MultiService.startService(self)
+
+        if self.authSock and FilePath(self.authSock).exists():
+            try:
+                authAgent = yield self.buildAuthAgent()
+                keys = yield authAgent.requestIdentities()
+            except:
+                log.err()
+                keys = []
+        else:
+            keys = []
+
+        if len(keys) == 0:
+            authAgent = None
+
+
+        webAgent = self.buildWebAgent()
+
+        try:
+            if authAgent:
+                response = yield self._issueAuthenticatedRequest(authAgent, webAgent)
+            else:
+                response = yield self._issueRequest(webAgent)
+
+        except WebError, we:
+            print >>sys.stderr, "{0.uri}: {1[0]}: {1[1]}".format(self, we)
+            exitStatus = 1
+
+        except:
+            log.err()
+            exitStatus = 2
+
+        else:
+            sys.stdout.write(response.content)
+            sys.stdout.flush()
+            exitStatus = os.EX_OK
+
+        reactor.stop()
+        #raise SystemExit(exitStatus)
+
+
+
+    def _issueRequest(self, webAgent):
+        return webAgent.open(self.uri)
+
+
+    @inlineCallbacks
+    def _issueAuthenticatedRequest(self, authAgent, webAgent):
+        keys = authAgent.keys[:]
+        authenticated = False
+        err = None
+
+        while keys and not authenticated:
+            key = keys.pop()[0]
+            auth = PubKeyAuthenticator(self.username, authAgent, key)
+            try:
+                response = yield webAgent.open(self.uri, authenticator=auth)
+            except UnauthorizedResponse, ur:
+                err = ur
+            else:
+                authenticated = True
+
+        if not authenticated:
+            assert err is not None
+            raise err
+
+        returnValue(response)
+
+
+
+class AppLogger(object):
+
+    def __init__(self, config):
+        self.config = config
+        self._observer = None
+
+
+    def start(self, application):
+        self._observer = application.getComponent(log.ILogObserver)
+        log.startLoggingWithObserver(self._observer, setStdout=False)
+
+    def stop(self):
+        if self._observer:
+            log.removeObserver(self._observer)
+            self._observer = None
+
+
+
+class LogObserver(object):
+
+    def __init__(self, config):
+        self.config = config
+
+    def __call__(self, event):
+        if event.get('printed'):
+            text = " ".join([str(m) for m in event["message"]]) + "\n"
+            out = sys.stderr if event.get("isError") else sys.stdout
+            out.write(text)
+            out.flush()
+
+        elif event.get("isError"):
+            if "failure" in event:
+                text = event['failure'].getTraceback()
+            else:
+                text = " ".join([str(m) for m in event["message"]]) + "\n"
+                out = sys.stderr
+            sys.stderr.write(text)
+            sys.stderr.flush()
+
+        # XXX
+        #else:
+        #    text = "DEBUG: " + " ".join([str(m) for m in event["message"]]) + "\n"
+        #    sys.stdout.write(text)
+        #    sys.stdout.flush()
+
+
+
+class Runner(ApplicationRunner):
+
+    loggerFactory = AppLogger
+
+    def __init__(self, name, config):
+        ApplicationRunner.__init__(self, config)
+        self.name = name
+
+
+    def preApplication(self):
+        pass
+
+
+    def createApplication(self):
+        client = ClientService(self.config)
+        app = Application(self.name)
+        app.setComponent(log.ILogObserver, LogObserver(self.config))
+        client.setServiceParent(app)
+        return app
+
+    createOrGetApplication = createApplication
+
+
+    def postApplication(self):
+        startApplication(self.application, False)
+
+        from twisted.internet import reactor
+        self.startReactor(reactor)
+
+
+    def startReactor(self, reactor):
+        reactor.run()
+
+
+
+if __name__ == "__main__":
+    executable, args = sys.argv[0], sys.argv[1:]
+    binDir, progName = os.path.split(executable)
+
+    opts = Options()
+    try:
+        opts.parseOptions(args)
+
+    except usage.error, ue:
+        sys.stderr.write("{0}: {1!s}\n".format(progName, ue))
+        raise SystemExit(os.EX_USAGE)
+
+    else:
+        Runner(progName, opts).run()
+
+
+# vim: ft=python ts=4 sw=4
+
