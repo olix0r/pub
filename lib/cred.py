@@ -15,7 +15,7 @@ from twisted.web.iweb import ICredentialFactory
 
 from zope.interface import Interface, Attribute, implements
 
-from jersey.ip import IP
+from jersey.inet import IP
 from jersey.auth.service import IPublicKeyService
 
 

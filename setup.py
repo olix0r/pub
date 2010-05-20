@@ -11,7 +11,7 @@ Jersey Services:
 
 def getVersion():
     import os
-    packageSeedFile = os.path.join("jersey", "_version.py")
+    packageSeedFile = os.path.join("lib", "_version.py")
     ns = {"__name__": __name__, }
     execfile(packageSeedFile, ns)
     return ns["version"]
@@ -29,24 +29,20 @@ setup(
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
 
+    requires = ["jersey", "twisted", "twisted.conch", "twisted.web", ],
     packages = [
-        "jersey",
-        "jersey.cases",
-        "jersey.auth",
+        "jersey.auth", "jersey.auth.cases",
         "twisted.plugins",
         ],
-    py_modules = [
-        "jersey.auth.cred",
-        "jersey.auth.service", "jersey.cases.test_auth_service",
-        "jersey.auth.ws",
-
-        "jersey._version",
-        ],
+    package_dir = {
+        "jersey.auth": "lib",
+        "jersey.auth.cases": "lib/cases",
+        },
     package_data = {
-        "jersey.cases": [
-            "animals_keys/antelope",
-            "animals_keys/monkey",
-            ],
+        "jersey.auth.cases": ["animals/{0}{1}".format(animal, ext) 
+                                for animal in ("antelope", "monkey")
+                                for ext in (".pub", "")
+                                ],
         "twisted.plugins": ["cred.jersey.ops.py",],
         },
 
