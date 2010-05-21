@@ -74,7 +74,7 @@ registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
 class PubKeyCredentialFactory(object):
     implements(ICredentialFactory)
 
-    scheme = "COM.YAHOO.OPS.JERSEY.CRED"
+    scheme = "PubKey/1.0"
 
     randLength = 32
     sessionLength = 5*60  # 5 minutes

@@ -20,10 +20,10 @@ version = getVersion()
 
 
 setup(
-    name = "jersey",
+    name = version.package,
     version = version.short(),
 
-    description = "Jersey Services",
+    description = "Jersey Auth Services",
     long_description = description,
 
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
@@ -34,6 +34,7 @@ setup(
         "jersey.auth", "jersey.auth.cases",
         "twisted.plugins",
         ],
+    scripts = ["bin/jget"],
     package_dir = {
         "jersey.auth": "lib",
         "jersey.auth.cases": "lib/cases",
@@ -41,9 +42,8 @@ setup(
     package_data = {
         "jersey.auth.cases": ["animals/{0}{1}".format(animal, ext) 
                                 for animal in ("antelope", "monkey")
-                                for ext in (".pub", "")
-                                ],
-        "twisted.plugins": ["cred.jersey.ops.py",],
+                                for ext in (".pub", "")],
+        "twisted.plugins": ["cred.jersey.ops.py"],
         },
 
     )
