@@ -42,7 +42,7 @@ class DirectoryKeyServiceTestCase(AnimalKeysTestBase, TestCase):
 
     def setUp(self):
         AnimalKeysTestBase.setUp(self)
-        from jersey.auth.service import DirectoryBackedKeyService
+        from jersey.cred.service import DirectoryBackedKeyService
         self.svc = DirectoryBackedKeyService(self.keyDir.path)
 
 
@@ -62,7 +62,7 @@ class DirectoryKeyServiceTestCase(AnimalKeysTestBase, TestCase):
 
     def test_yeti_NoSuchUser(self):
         """Fool, the Yeti doesn't exist."""
-        from jersey.auth.service import NoSuchUser
+        from jersey.cred.service import NoSuchUser
 
         def _eb(nsu):
             self.assertEquals("yeti", getattr(nsu, "user", None))

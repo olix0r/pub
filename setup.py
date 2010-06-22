@@ -29,18 +29,18 @@ setup(
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
 
-    requires = ["jersey", "twisted", "twisted.conch", "pendrell>=0.2.0", ],
+    requires = ["jersey", "twisted", "twisted.conch", "pendrell(>=0.2.0)", ],
     packages = [
-        "jersey.auth", "jersey.auth.cases",
+        "jersey.cred", "jersey.cred.cases",
         "twisted.plugins",
         ],
     scripts = ["bin/jget"],
     package_dir = {
-        "jersey.auth": "lib",
-        "jersey.auth.cases": "lib/cases",
+        "jersey.cred": "lib",
+        "jersey.cred.cases": "lib/cases",
         },
     package_data = {
-        "jersey.auth.cases": ["animals/{0}{1}".format(animal, ext) 
+        "jersey.cred.cases": ["animals/{0}{1}".format(animal, ext) 
                                 for animal in ("antelope", "monkey")
                                 for ext in (".pub", "")],
         "twisted.plugins": ["cred.jersey.ops.py"],

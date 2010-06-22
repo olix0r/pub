@@ -16,7 +16,7 @@ from zope.interface import Interface, Attribute, implements
 
 from jersey import log
 from jersey.inet import IP
-from jersey.auth.service import IPublicKeyService
+from jersey.cred.service import IPublicKeyService
 
 
 
@@ -128,9 +128,6 @@ class PubKeyCredentialFactory(object):
             creds = self._buildCredentials(auth, request)
         except KeyError, ke:
             raise LoginFailed("{0!r} not in authorization.".format(*ke.args))
-        except:
-            log.err()
-            raise
 
         log.debug("Decoded credentials: {0}".format(creds))
         return creds

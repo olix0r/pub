@@ -13,7 +13,7 @@ from twisted.web.resource import IResource, Resource
 from twisted.web.util import DeferredResource
 
 from jersey import log
-from jersey.auth.service import IPublicKeyService
+from jersey.cred.service import IPublicKeyService
 
 
 

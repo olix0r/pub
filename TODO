@@ -1,13 +1,13 @@
 2010/05/20
 
-- Develope a clearer package model and naming convention.  Is 'auth' the name for
-  this package?  Or 'cred'?   Or 'identity' or etc...
+- Develope a naming convention.
+  - Is 'auth' the name for this package?  Or 'cred'?   Or 'identity' or etc...
 
 - Make realms seperate from Identities/Keys
 
-- Seperate services from data objects, perhaps.
+- Differntiate the PubKeyService from the authorization mechanism.
 
-- Docstrings
+- Provide a PrivKeyService (i.e. enhanced agent).
 
-- Ensure that the auth scheme is called PubKey.v1 and not something else...
+- Move 'jget' into a library.. and make it richer.
 

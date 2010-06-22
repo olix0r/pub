@@ -12,7 +12,7 @@ from twisted.web.test.test_httpauth import RequestMixin
 
 from zope.interface.verify import verifyObject
 
-from jersey.auth.cred import IPrivateKey, PubKeyCredentialFactory
+from jersey.cred.cred import IPrivateKey, PubKeyCredentialFactory
 
 
 
@@ -154,8 +154,6 @@ class JerseyAuthTests(RequestMixin, TestCase):
         has no username field or if the username field is empty.
         """
         c = self.credentialFactory.getChallenge(self.request)
-
-        # Check for no username
         auth = self.buildAuth(challenge=c["challenge"])
         del auth["username"]
         rsp = self.formatResponse(**auth)
@@ -163,7 +161,14 @@ class JerseyAuthTests(RequestMixin, TestCase):
             self.credentialFactory.decode, rsp, self.request)
         self.assertEqual(str(e), "'username' not in authorization.")
 
-        # Check for an empty username
+
+    def test_emtpyUsername(self):
+        """
+        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} if the response
+        has no username field or if the username field is empty.
+        """
+        c = self.credentialFactory.getChallenge(self.request)
+        auth = self.buildAuth(challenge=c["challenge"])
         auth["username"] = ""
         rsp = self.formatResponse(**auth)
         e = self.assertRaises(LoginFailed,
