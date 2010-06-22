@@ -74,7 +74,7 @@ class AuthorizedResource(Resource):
     def __init__(self, user):
         self.user = user
 
-    def render(self, request):
+    def render_GET(self, request):
         return "YAY! YOU FOUND ME\n"
 
 

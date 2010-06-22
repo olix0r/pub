@@ -29,7 +29,7 @@ setup(
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
 
-    requires = ["jersey", "twisted", "twisted.conch", "twisted.web", ],
+    requires = ["jersey", "twisted", "twisted.conch", "pendrell>=0.2.0", ],
     packages = [
         "jersey.auth", "jersey.auth.cases",
         "twisted.plugins",

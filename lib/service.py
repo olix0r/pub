@@ -4,7 +4,8 @@ from twisted.conch.ssh.keys import Key
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, inlineCallbacks, returnValue
 from twisted.python.filepath import FilePath
-from twisted.python import log
+
+from jersey import log
 
 from zope.interface import Interface, implements
 
@@ -42,6 +43,7 @@ class DirectoryBackedKeyService(MultiService):
 
     @inlineCallbacks
     def getPublicKeys(self, user, type=None):
+        log.debug("Getting public keys for {0}".format(user))
         def _control():
             d = Deferred()
             reactor.callLater(0, d.callback, True)
@@ -55,6 +57,7 @@ class DirectoryBackedKeyService(MultiService):
                     try:
                         key = Key.fromString(line)
                         if type is None or type == key.type():
+                            log.debug("Loaded key: {0}".format(line))
                             keys.append(key)
 
                     except Exception, e:

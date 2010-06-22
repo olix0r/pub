@@ -5,7 +5,6 @@
 import json
 
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.python import log
 from twisted.python.components import registerAdapter
 
 from twisted.web.client import HTTPClientFactory
@@ -13,6 +12,7 @@ from twisted.web.guard import HTTPAuthSessionWrapper
 from twisted.web.resource import IResource, Resource
 from twisted.web.util import DeferredResource
 
+from jersey import log
 from jersey.auth.service import IPublicKeyService
 
 
@@ -162,12 +162,16 @@ class JerseyGuard(HTTPAuthSessionWrapper):
         return HTTPAuthSessionWrapper._login(self, creds)
 
 
-
     def _selectParseHeader(self, header):
+        log.debug("Finding an authenticator for {0}".format(header))
+
         scheme, elements = header.split(' ', 1)
         for fact in self._credentialFactories:
             if fact.scheme.lower() == scheme.lower():
+                log.debug("Found an authenticator: {0}".format(fact))
                 return (fact, elements)
+
+        log.warn("No matching authenticator found for {0}".format(scheme))
         return (None, None)
 
 

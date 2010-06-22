@@ -1,10 +1,6 @@
-import os, sys, warnings
+#!/usr/bin/env python
 
-warnings.filterwarnings(
-    "ignore",
-    category=DeprecationWarning,
-    module="Crypto.Hash",
-    )
+import os, sys
 
 from twisted.application.app import ReactorSelectionMixin
 from twisted.conch.ssh.agent import SSHAgentClient, SSHAgentServer
@@ -14,10 +10,12 @@ from twisted.protocols.loopback import loopbackAsync
 from twisted.python import usage
 from twisted.python.filepath import FilePath
 
+from zope.interface import implements
+
 from jersey import cli, log
 
 from pendrell.agent import Agent
-from pendrell.auth import Authenticator
+from pendrell.auth import IAuthenticator
 from pendrell.error import WebError, UnauthorizedResponse
 from pendrell.util import URLPath
 
@@ -37,7 +35,11 @@ class AuthAgentClient(SSHAgentClient):
 
 
 
-class PubKeyAuthenticator(Authenticator):
+class PubKeyAuthenticator(object):
+    implements(IAuthenticator)
+
+    schemes = ("PubKey/0.1", )
+    secure = True
 
     def __init__(self, username, agent, pubKey):
         self.username = username
@@ -45,16 +47,18 @@ class PubKeyAuthenticator(Authenticator):
         self.pubKey = pubKey
 
 
+    # FIXME Expose scheme as attribute and provide only authorize().
+
     @inlineCallbacks
-    def authorize_pubkey(self, params):
+    def authorize(self, scheme, **params):
         cred = {"challenge": params["challenge"],
                 "realm": params["realm"],
                 "username": self.username,
                 }
         cred["signature"] = yield self.signAuth(cred)
 
-        auth = ", ".join(["{0}=\"{1}\"".format(*kv) for kv in cred.items()])
-        returnValue("PUBKEY {0}".format(auth))
+        auth = ", ".join(["{0}=\"{1}\"".format(*i) for i in cred.items()])
+        returnValue("{0} {1}".format(scheme, auth))
 
 
     @inlineCallbacks
@@ -68,9 +72,13 @@ class PubKeyAuthenticator(Authenticator):
 class JGetOptions(cli.Options, ReactorSelectionMixin):
 
     optParameters = [
-            ["user", "u", os.getlogin(), "Login user"],
-            ["auth-sock", "A", os.getenv("JERSEY_AUTH_SOCK"),
+        ["user", "u", os.getlogin(), "Login user"],
+        ["auth-sock", "A", os.getenv("JERSEY_AUTH_SOCK"),
                 "Authentication socket"],
+        ]
+
+    optFlags = [
+        ["debug", "D", "Be debuggy."]
         ]
 
     def parseArgs(self, url):
@@ -82,6 +90,8 @@ class JGetOptions(cli.Options, ReactorSelectionMixin):
     def postOptions(self):
         if not self["auth-sock"]:
             raise usage.error("No authentication socket specified.")
+        if self["debug"]:
+            self.logLevel = log.DEBUG
 
 
 
@@ -114,8 +124,8 @@ class JGetCommand(cli.Command):
             try:
                 authAgent = yield self.buildAuthAgent()
                 keys = yield authAgent.requestIdentities()
-            except:
-                log.err()
+            except Exception, e:
+                log.warn(e)
                 keys = []
         else:
             keys = []
@@ -193,6 +203,9 @@ if __name__ == "__main__":
     except usage.error, ue:
         print >>sys.stderr, "{1!s}\n{0}: {2!s}".format(progName, opts, ue)
         raise SystemExit(os.EX_USAGE)
+
+    else:
+        raise SystemExit(vtwt.exitValue)
 
 
 
