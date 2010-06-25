@@ -1,0 +1,4 @@
+"""
+Jersey.Cred --  Credential management.
+
+"""
