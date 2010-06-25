@@ -18,9 +18,9 @@ from twisted.web.server import Site
 
 from zope.interface import implements
 
-from jersey.auth.cred import PubKeyCredentialFactory
-from jersey.auth.service import IPublicKeyService, DirectoryBackedKeyService
-import jersey.auth.ws
+from jersey.cred.cred import PubKeyCredentialFactory
+from jersey.cred.service import IPublicKeyService, DirectoryBackedKeyService
+import jersey.cred.ws
 
 
 WWW_PORT = 80 if geteuid() == 0 else 8080
@@ -96,7 +96,7 @@ class JerseyKeysOptions(Options):
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)
 
-    tapname = "cred.jersey.ops"
+    tapname = "cred.jersey"
     description = "Jersey Public Key Service"
     options = JerseyKeysOptions
 
@@ -126,9 +126,9 @@ class ServiceMaker(object):
         root = IResource(keySvc)
     
         factories = [
-            PubKeyCredentialFactory("users@keys.jersey.ops.yahoo.com"),
+            PubKeyCredentialFactory("users@cred.jersey"),
             ]
-        authorized = jersey.auth.ws.JerseyGuard(portal, factories)
+        authorized = jersey.cred.ws.JerseyGuard(portal, factories)
 
         root.putChild("authorisation", authorized)
         root.putChild("authorization", authorized)

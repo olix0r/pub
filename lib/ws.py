@@ -21,9 +21,8 @@ class JerseyResource(Resource):
 
     @staticmethod
     def splitResourceSuffix(name):
-        parts = name.rsplit(".", 1)
-        if len(parts) == 2:
-            name, suffix = parts
+        if "." in name:
+            name, suffix = name.rsplit(".", 1)
         else:
             suffix = None
         return name, suffix
