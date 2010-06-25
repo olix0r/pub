@@ -62,10 +62,10 @@ class JerseyChecker(object):
             userKeys = yield self.svc.getPublicKeys(cred.username)
 
         except KeyError, ke:
-            raise self.UnauthorizedLogin("Invalid user.")
+            raise self.UnauthorizedLogin("Invalid user", cred.username)
 
         if not self._verifySignatureByKeys(cred, userKeys):
-            raise self.UnauthorizedLogin("Invalid signature.")
+            raise self.UnauthorizedLogin("Invalid signature")
 
         returnValue(cred.username)
 
@@ -102,7 +102,6 @@ class PubKeyCredentialFactory(object):
             self.randLength = randLength
         if sessionLength is not None:
             self.sessionLength = sessionLength
-
         
         if secret is not None:
             self._secret = secret
