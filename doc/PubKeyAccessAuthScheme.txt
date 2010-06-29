@@ -31,9 +31,8 @@ scheme provided by RFC 2617 only describes authentication by way of
 shared-secrets (i.e. passwords).
 
 The PubKey Access Authentication scheme aims to enhance security on the
-World Wide Web by bringing an equivalent of SSH's "publickey"
-authentication method (RFC 4252, Sec. 7) to challenge-based HTTP client
-authentication.
+World Wide Web by bringing an equivalent of SSH's "publickey" authentication
+method to challenge-based HTTP client authentication.
 
 
   0.4  Table of Contents
@@ -323,12 +322,17 @@ confidentiality and server trustworthiness.
   --------------------------
 
 XXX TODO
+XXX - Attacks against client key are subject to strength of key.
+XXX - Attacks against server secrets are possible
+XXX   - Random seed helps to mitigate cryptanalysis on challenge signatures
+XXX   - Public Key crypto is also an option for the server...
 
 
   1.6.4  Spoofing by Counterfeit Servers
   --------------------------------------
 
 XXX TODO
+XXX - SSL is primary defense against server spoofing
 
 
   2 References
