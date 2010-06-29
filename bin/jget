@@ -20,6 +20,7 @@ from pendrell.error import WebError, UnauthorizedResponse
 from pendrell.util import URLPath
 
 
+
 class AuthAgentClient(SSHAgentClient):
 
     def __init__(self, *args, **kw):
@@ -34,36 +35,34 @@ class AuthAgentClient(SSHAgentClient):
 
 
 
-
 class PubKeyAuthenticator(object):
     implements(IAuthenticator)
 
-    schemes = ("PubKey/0.1", )
+    schemes = ("PubKey.v1", )
     secure = True
 
-    def __init__(self, username, agent, pubKey):
-        self.username = username
+    def __init__(self, identifier, agent, pubKey):
+        self.identifier = identifier
         self.agent = agent
         self.pubKey = pubKey
 
-
-    # FIXME Expose scheme as attribute and provide only authorize().
 
     @inlineCallbacks
     def authorize(self, scheme, **params):
         cred = {"challenge": params["challenge"],
                 "realm": params["realm"],
-                "username": self.username,
+                "id": self.identifier,
                 }
         cred["signature"] = yield self.signAuth(cred)
 
         auth = ", ".join(["{0}=\"{1}\"".format(*i) for i in cred.items()])
+        log.debug("Authenticating: {0}".format(auth))
         returnValue("{0} {1}".format(scheme, auth))
 
 
     @inlineCallbacks
     def signAuth(self, auth):
-        data = "{0[username]};{0[realm]};{0[challenge]}".format(auth)
+        data = "{0[id]};{0[realm]};{0[challenge]}".format(auth)
         signature = yield self.agent.signData(self.pubKey, data)
         returnValue(signature.encode("base64").replace("\n", ""))
 

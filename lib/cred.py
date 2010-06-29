@@ -22,17 +22,17 @@ from jersey.cred.service import IPublicKeyService
 
 class IPrivateKey(Interface):
     """Based on twisted.cred.credentials.ISSHPrivateKey"""
-    username = Attribute("Credential's username.")
+    identifier = Attribute("Credential's entity")
     client = Attribute("Client IP")
     data = Attribute("Signed data")
-    signature = Attribute("The signed data.")
+    signature = Attribute("The signed data")
 
 
 class PrivateKey(object):
     implements(IPrivateKey)
 
-    def __init__(self, username, client, data, signature):
-        self.username = username
+    def __init__(self, identifier, client, data, signature):
+        self.identifier = identifier
         self.client = client
         self.data = data
         self.signature = signature
@@ -57,17 +57,17 @@ class JerseyChecker(object):
 
     @inlineCallbacks
     def requestAvatarId(self, cred):
-        log.debug("{0} is requesting an avatar.".format(cred.username))
+        log.debug("{0} is requesting an avatar.".format(cred.identifier))
         try:
-            userKeys = yield self.svc.getPublicKeys(cred.username)
+            userKeys = yield self.svc.getPublicKeys(cred.identifier)
 
         except KeyError, ke:
-            raise self.UnauthorizedLogin("Invalid user", cred.username)
+            raise self.UnauthorizedLogin("Invalid user", cred.identifier)
 
         if not self._verifySignatureByKeys(cred, userKeys):
             raise self.UnauthorizedLogin("Invalid signature")
 
-        returnValue(cred.username)
+        returnValue(cred.identifier)
 
 
     @staticmethod
@@ -86,7 +86,7 @@ registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
 class PubKeyCredentialFactory(object):
     implements(ICredentialFactory)
 
-    scheme = "PubKey/0.1"
+    scheme = "PubKey.v1"
 
     randLength = 32
     sessionLength = 5*60  # 5 minutes
@@ -110,12 +110,8 @@ class PubKeyCredentialFactory(object):
             
 
     def getChallenge(self, request):
-        seed = self._generateSeed()
-        challenge = self._generateChallenge(seed, request)
-        return {
-            "realm": self.realm,
-            "challenge": challenge,
-            }
+        challenge = self.generateChallenge(request)
+        return {"realm": self.realm, "challenge": challenge,}
 
 
     def decode(self, response, request):
@@ -126,75 +122,72 @@ class PubKeyCredentialFactory(object):
             self._verifyChallenge(auth["challenge"], request)
             creds = self._buildCredentials(auth, request)
         except KeyError, ke:
-            raise LoginFailed("{0!r} not in authorization.".format(*ke.args))
+            raise LoginFailed("{0!r} not in authorization".format(*ke.args))
+        except LoginFailed, lf:
+            log.warn(lf)
+            raise
 
         log.debug("Decoded credentials: {0}".format(creds))
         return creds
 
 
-    @property
-    def _now(self):
+    @staticmethod
+    def _getTime():
         return int(time.time())
 
 
     def _generateSecret(self):
         return secureRandom(self.randLength)
 
-    def _generateSeed(self):
-        return self._generateSecret().encode("hex")
 
-    def _generateChallenge(self, seed, request):
+    def generateChallenge(self, request):
         """Generate a challenge for the request.
         
         The client is expected to sign this challenge string such
         """
         client = request.getClientIP() or "0.0.0.0"
-
-        raw = "{0.realm}{0.sep}{1}{0.sep}{2}{0.sep}{0._now}".format(
-                self, seed, client)
+        seed = self._generateSecret().encode("base64").replace("\n", "")
+        now = self._getTime()
+        raw = "{0.realm}{0.sep}{1}{0.sep}{2}{0.sep}{3}".format(
+                self, client, now, seed)
         encoded = raw.encode("base64").replace("\n", "")
-        log.debug("Generated challenge: {0}".format(encoded))
-
-        signed = self._digest("{1}{0.sep}{0._secret}".format(self, raw))
-        log.debug("Generated signature: {0}".format(signed))
-
-        return self.sep.join((signed, encoded, seed))
+        signed = self._sign(raw).encode("base64").replace("\n", "")
+        return self.sep.join((signed, encoded))
 
 
     def _verifyChallenge(self, challenge, request):
         """Verify a challenge as returned from _generateChallenge.
         """
-        log.debug("Decoding challenge: {0}".format(challenge))
-
-        client = request.getClientIP() or "0.0.0.0"
-
         try:
-            signature, encoded, seed = challenge.split(self.sep, 2)
+            signature, encoded = challenge.split(self.sep)
             raw = encoded.decode("base64")
+            realm, clientIP, sigTime, seed = raw.split(self.sep)
+
         except ValueError:
-            raise LoginFailed("Invalid challenge value.")
-
-        log.debug("Verifying signature={0}\nchallenge={1}".format(signature, raw))
-
-        signedChallenge = self._digest("{1}{0.sep}{0._secret}".format(self, raw))
-        if signedChallenge != signature:
-            log.warn("Expected signature: {0}".format(signedChallenge))
-            raise LoginFailed("Invalid challenge value.")
-
-        expected = "{0.realm}{0.sep}{1}{0.sep}{2}{0.sep}".format(
-                self, seed, client)
-        if not raw.startswith(expected):
-            raise LoginFailed("Invalid challenge value.")
-
-        sigTime = int(raw[len(expected):])
-        if sigTime + self.sessionLength < self._now:
-            raise LoginFailed("Session expired.")
+            raise LoginFailed("Invalid challenge value")
+        if not self._verify(signature, raw):
+            raise LoginFailed("Invalid signature")
+        if realm != self.realm:
+            raise LoginFailed("Incorrect realm")
+        if self._timeExpired(sigTime):
+            raise LoginFailed("Session expired")
+        if clientIP != (request.getClientIP() or "0.0.0.0"):
+            raise LoginFailed("Incorrect client")
 
         return True
 
 
     def _digest(self, value):
-        return hashlib.new(self.digestAlgorithm, value).hexdigest()
+        return hashlib.new(self.digestAlgorithm, value).digest()
+
+    def _sign(self, value):
+        return self._digest("{1}{0.sep}{0._secret}".format(self, value))
+
+    def _verify(self, signature, value):
+        return bool(self._sign(value) == signature.decode("base64"))
+
+    def _timeExpired(self, t):
+        return bool(int(t) + self.sessionLength < self._getTime())
 
 
     def _parseAuth(self, response):
@@ -212,15 +205,15 @@ class PubKeyCredentialFactory(object):
 
 
     def _buildCredentials(self, auth, request):
-        log.msg("Building credentials for: {0!r}".format(auth))
-        if not auth["username"]:
-            raise LoginFailed("Invalid username.")
+        log.msg("Building credentials from {0!r}".format(auth))
+        if not auth["id"]:
+            raise LoginFailed("No identifier")
 
         client = IP(request.getClientIP() or '0.0.0.0')
-        data = "{1[username]}{0.sep}{1[realm]}{0.sep}{1[challenge]}".format(
+        data = "{1[id]}{0.sep}{1[realm]}{0.sep}{1[challenge]}".format(
                 self, auth)
         sig = auth["signature"].decode("base64")
-        creds = PrivateKey(auth["username"], client, data, sig)
+        creds = PrivateKey(auth["id"], client, data, sig)
 
         return creds
 
