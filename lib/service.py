@@ -8,6 +8,7 @@ from twisted.python.filepath import FilePath
 from zope.interface import Attribute, Interface, implements
 
 from jersey import log
+from jersey.cred import version as VERSION
 from jersey.cred.crypto import Key
 
 
@@ -77,7 +78,6 @@ class IRealm(Interface):
         """Authorize a key"""
 
 
-
 class IPublicKeyService(Interface):
 
     def getPublicKeys(username, type=None):
@@ -102,16 +102,16 @@ class DirectoryBackedKeyService(MultiService):
         self.keyDir = keyDir
 
 
-    def getPublicKeys(self, user, type=None):
+    def getPublicKeys(self, user, kind=None):
         log.debug("Getting public keys for {0}".format(user))
         keys = list()
         for line in self._userKeyFileIterator(user):
             try:
                 key = self._buildKey(line)
             except Exception, e:
-                log.warn(e)
+                log.error(e)
             else:
-                if type is None or type == key.type():
+                if kind is None or kind == key.type():
                     log.debug("Loaded key: {0}".format(line))
                     keys.append(key)
         return succeed(keys)
@@ -150,5 +150,30 @@ class NoSuchUser(KeyError):
     def __init__(self, user, *args, **kw):
         KeyError.__init__(self, user, *args, **kw)
         self.user = user
+
+
+
+class SQLCredEntityService(MultiService):
+    implements(ICredEntityService)
+
+    version = VERSION.short()
+
+    def __init__(self, dbConn):
+        MultiService.__init__(self)
+        self._db = dbConn
+
+    def getEntity(self, id):
+        pass
+
+    def createEntity(self, id, name, primaryKey):
+        pass
+
+    def deleteEntity(self, id):
+        pass
+
+    def searchEntities(self, id=None, name=None, keyId=None,
+            offset=None, count=None):
+        pass
+
 
 
