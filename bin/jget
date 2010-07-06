@@ -80,11 +80,13 @@ class JGetOptions(cli.Options, ReactorSelectionMixin):
         ["debug", "D", "Be debuggy."]
         ]
 
+
     def parseArgs(self, url):
         try:
             self["url"] = URLPath.fromString(url)
         except Exception, e:
             raise usage.error("Invalid URL: {0}: {1}".format(url, *e.args))
+
 
     def postOptions(self):
         if not self["auth-sock"]:
@@ -141,20 +143,17 @@ class JGetCommand(cli.Command):
                 response = yield self._issueRequest(webAgent)
 
         except WebError, we:
-            print >>sys.stderr, "{0.url}: {1[0]}: {1[1]}".format(self, we)
-            exitStatus = 1
+            print >>sys.stderr, "{0.url}: {1[0]}: {1[1]}".format(self, we.args)
+            self.exitValue = 1
 
         except:
             log.err()
-            exitStatus = 2
+            self.exitValue = 2
 
         else:
             sys.stdout.write(response.content)
             sys.stdout.flush()
-            exitStatus = os.EX_OK
-
-        raise SystemExit(exitStatus)
-
+            self.exitValue = os.EX_OK
 
 
     def _issueRequest(self, webAgent):
