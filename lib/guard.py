@@ -1,6 +1,10 @@
-import binascii, hashlib, time
+"""
+jersey.cred.guard --  PubKey.v1 for twisted.web.
+"""
 
-from twisted.application.service import IService, Service
+
+import hashlib, time
+
 from twisted.cred.checkers import ICredentialsChecker
 from twisted.cred.error import LoginFailed, UnauthorizedLogin
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -32,7 +36,7 @@ class SignedAuthorization(object):
 
     def __init__(self, identifier, client, data, signature):
         self.identifier = identifier
-        self.client = client
+        self.client = IP(client)
         self.data = data
         self.signature = signature
 
@@ -83,6 +87,9 @@ registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
 
 
 class PubKeyCredentialFactory(object):
+    """Generates PubKey.v1 WWW-Authenticate challenge headers and builds
+    SignedAuthorization credentials from PubKey.v1 Authrorization headers.
+    """
     implements(ICredentialFactory)
 
     scheme = "PubKey.v1"
@@ -101,7 +108,6 @@ class PubKeyCredentialFactory(object):
             self.randLength = randLength
         if sessionLength is not None:
             self.sessionLength = sessionLength
-        
         if secret is not None:
             self._secret = secret
         else:
@@ -114,9 +120,9 @@ class PubKeyCredentialFactory(object):
 
 
     def decode(self, response, request):
+        """Decode an authorization response into a SignedAuthorization."""
         log.debug("Decoding authorization.")
         auth = self._parseAuth(response)
-
         try:
             self._verifyChallenge(auth["challenge"], request)
             creds = self._buildCredentials(auth, request)
@@ -125,7 +131,6 @@ class PubKeyCredentialFactory(object):
         except LoginFailed, lf:
             log.warn(lf)
             raise
-
         log.debug("Decoded credentials: {0}".format(creds))
         return creds
 
@@ -138,6 +143,9 @@ class PubKeyCredentialFactory(object):
     def _generateSecret(self):
         return secureRandom(self.randLength)
 
+    def _generateSeed(self):
+        return self._generateSecret().encode("base64").replace("\n", "")
+
 
     _challengeFormat = "{realm}{sep}{client}{sep}{time}{sep}{seed}"
 
@@ -147,7 +155,7 @@ class PubKeyCredentialFactory(object):
         The client is expected to sign this challenge string such
         """
         client = request.getClientIP() or "0.0.0.0"
-        seed = self._generateSecret().encode("base64").replace("\n", "")
+        seed = self._generateSeed()
         now = self._getTime()
         raw = self._challengeFormat.format(realm=self.realm, client=client,
                 time=now, seed=seed, sep=self.sep)
@@ -164,7 +172,6 @@ class PubKeyCredentialFactory(object):
             signature, encoded = challenge.split(self.sep)
             raw = encoded.decode("base64")
             realm, clientIP, sigTime, seed = raw.split(self.sep)
-
         except ValueError:
             raise LoginFailed("Invalid challenge value")
         if not self._verify(signature, raw):
@@ -175,7 +182,6 @@ class PubKeyCredentialFactory(object):
             raise LoginFailed("Session expired")
         if clientIP != (request.getClientIP() or "0.0.0.0"):
             raise LoginFailed("Incorrect client")
-
         return True
 
 
@@ -217,12 +223,10 @@ class PubKeyCredentialFactory(object):
         log.debug("Building credentials from {0!r}".format(auth))
         if not auth["id"]:
             raise LoginFailed("No identifier")
-
-        client = IP(request.getClientIP() or '0.0.0.0')
+        client = request.getClientIP() or '0.0.0.0'
         data = auth["challenge"]
         sig = auth["signature"].decode("base64")
         creds = SignedAuthorization(auth["id"], client, data, sig)
-
         return creds
 
 
@@ -230,13 +234,13 @@ class PubKeyCredentialFactory(object):
 class Guard(HTTPAuthSessionWrapper):
 
     def _login(self, creds):
-        log.msg("Logging in: {0!r}".format(creds))
+        log.info("Logging in: {0!r}".format(creds))
         return HTTPAuthSessionWrapper._login(self, creds)
 
 
     def _selectParseHeader(self, header):
+        """Find an authentication scheme in a case-insensitive way."""
         log.debug("Finding an authenticator for {0}".format(header))
-
         scheme, elements = header.split(' ', 1)
         for fact in self._credentialFactories:
             if fact.scheme.lower() == scheme.lower():
