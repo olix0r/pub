@@ -309,14 +309,17 @@ class JerseyAuthTests(RequestMixin, TestCase):
         return kw
 
 
+    _authFmt = "{0[id]};{0[realm]};{0[challenge]}"
+
     def signAuth(self, auth, request):
         """
         Calculate the response for the given challenge
         """
         kp = self.keys[auth["id"]]
-        signature = kp.priv.sign(auth["challenge"])
-        self.assertTrue(kp.pub.verify(signature, auth["challenge"]))
-        return signature.encode("base64").replace("\n", "")
+        authToken = self._authFmt.format(auth)
+        sig = kp.priv.sign(authToken)
+        self.assertTrue(kp.pub.verify(sig, authToken))
+        return sig.encode("base64").replace("\n", "")
 
 
     def assertSignature(self, creds):

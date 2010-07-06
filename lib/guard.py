@@ -125,7 +125,7 @@ class PubKeyCredentialFactory(object):
         auth = self._parseAuth(response)
         try:
             self._verifyChallenge(auth["challenge"], request)
-            creds = self._buildCredentials(auth, request)
+            creds = self.buildCredentials(auth, request)
         except KeyError, ke:
             raise LoginFailed("{0!r} not in authorization".format(*ke.args))
         except LoginFailed, lf:
@@ -133,6 +133,22 @@ class PubKeyCredentialFactory(object):
             raise
         log.debug("Decoded credentials: {0}".format(creds))
         return creds
+
+
+    _authFmt = "{a[id]}{s}{a[realm]}{s}{a[challenge]}"
+
+    def buildCredentials(self, auth, request):
+        log.debug("Building credentials from {0!r}".format(auth))
+        if not auth["id"]:
+            raise LoginFailed("No identifier")
+
+        client = IP(request.getClientIP() or '0.0.0.0')
+        data = self._authFmt.format(a=auth, s=self.sep)
+        sig = auth["signature"].decode("base64")
+        creds = SignedAuthorization(auth["id"], client, data, sig)
+
+        return creds
+
 
 
     @staticmethod
@@ -147,7 +163,7 @@ class PubKeyCredentialFactory(object):
         return self._generateSecret().encode("base64").replace("\n", "")
 
 
-    _challengeFormat = "{realm}{sep}{client}{sep}{time}{sep}{seed}"
+    _challengeFmt = "{realm}{sep}{client}{sep}{time}{sep}{seed}"
 
     def generateChallenge(self, request):
         """Generate a challenge for the request.
@@ -157,7 +173,7 @@ class PubKeyCredentialFactory(object):
         client = request.getClientIP() or "0.0.0.0"
         seed = self._generateSeed()
         now = self._getTime()
-        raw = self._challengeFormat.format(realm=self.realm, client=client,
+        raw = self._challengeFmt.format(realm=self.realm, client=client,
                 time=now, seed=seed, sep=self.sep)
         encoded = raw.encode("base64").replace("\n", "")
         signed = self._sign(raw).encode("base64").replace("\n", "")
@@ -217,17 +233,6 @@ class PubKeyCredentialFactory(object):
         if s and (s[0] in "\"\'") and (s[0] == s[-1]):
             s = s[1:-1]
         return s
-
-
-    def _buildCredentials(self, auth, request):
-        log.debug("Building credentials from {0!r}".format(auth))
-        if not auth["id"]:
-            raise LoginFailed("No identifier")
-        client = request.getClientIP() or '0.0.0.0'
-        data = auth["challenge"]
-        sig = auth["signature"].decode("base64")
-        creds = SignedAuthorization(auth["id"], client, data, sig)
-        return creds
 
 
 
