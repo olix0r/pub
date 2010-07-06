@@ -1,6 +1,6 @@
 import os
 
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import inlineCallbacks, maybeDeferred
 from twisted.trial import util
 from twisted.trial.unittest import TestCase
 from twisted.python.filepath import FilePath
@@ -67,7 +67,7 @@ class DirectoryKeyServiceTestCase(AnimalKeysTestBase, TestCase):
         def _eb(nsu):
             self.assertEquals("yeti", getattr(nsu, "user", None))
 
-        return self.assertFailure(self.svc.getPublicKeys("yeti"), NoSuchUser
+        return self.assertFailure(maybeDeferred(self.svc.getPublicKeys, "yeti"), NoSuchUser
                 ).addErrback(_eb)
 
 

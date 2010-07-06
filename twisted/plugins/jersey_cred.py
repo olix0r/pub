@@ -3,10 +3,8 @@ from time import time
 
 from twisted.application.service import IServiceMaker, MultiService
 from twisted.application.internet import TCPServer
-
 from twisted.cred.checkers import ICredentialsChecker
 from twisted.cred.portal import IRealm, Portal
-
 from twisted.plugin import IPlugin
 from twisted.python import log
 from twisted.python.components import registerAdapter
@@ -18,7 +16,7 @@ from twisted.web.server import Site
 
 from zope.interface import implements
 
-from jersey.cred.cred import PubKeyCredentialFactory
+from jersey.cred.guard import Guard, PubKeyCredentialFactory
 from jersey.cred.service import IPublicKeyService, DirectoryBackedKeyService
 import jersey.cred.ws
 
@@ -80,6 +78,7 @@ class AuthorizedResource(Resource):
 
 
 class JerseyKeysOptions(Options):
+
     optParameters = [
         ["keydir", "K", "keys.pub", "Public key directory"],
         ["port", "p", WWW_PORT, "Port", int],
@@ -124,11 +123,11 @@ class ServiceMaker(object):
 
     def buildSite(self, keySvc, portal):
         root = IResource(keySvc)
-    
+
         factories = [
-            PubKeyCredentialFactory("users@cred.jersey"),
+            PubKeyCredentialFactory("users@service.domain.tld"),
             ]
-        authorized = jersey.cred.ws.JerseyGuard(portal, factories)
+        authorized = Guard(portal, factories)
 
         root.putChild("authorisation", authorized)
         root.putChild("authorization", authorized)
@@ -137,5 +136,4 @@ class ServiceMaker(object):
 
 
 JerseyKeys = ServiceMaker()
-
 
