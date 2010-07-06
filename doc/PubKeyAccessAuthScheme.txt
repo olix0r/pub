@@ -83,8 +83,8 @@ public key credentials.
 Like the Digest Access Authentication Scheme [RFC 2617], the PubKey.v1
 scheme is based on a simple challenge-response paradigm.  The PubKey scheme
 responds to unauthorized clients with a challenge value; and a valid
-response contains a cryptographic signature of the authentication realm,
-and the server's challenge.
+response contains a cryptographic signature of client's id, the authentication
+realm, and the server's challenge.
 
 The client's secret never leaves the client.  The server verifies the
 client's signed authorization request with the client's published public
@@ -167,8 +167,11 @@ WWW-Authenticate response header for the entity being requested.
       The client identifier in the specified realm.
 
     signature
-      A quoted base 64 encoded string representation of the challenge value
-      generated with the client's private key.
+      A quoted base 64 encoded string representation of a signature generated
+      with the client's private key as follows.
+
+          signature = BASE64( D^M( authorization ))
+          authorization = identifier ";" realm ";" challenge
 
 If a directive or its value is improper, or required directives are
 missing, the proper response is 400 Bad Request.  If the signature is
@@ -272,11 +275,15 @@ client sends a new request including the Authorization header:
         id='McFly",
         challenge="aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09",
         realm="users@svc.domain.tld",
-        signature="AAAAB3NzaC1yc2EAAAEAWQTo3u4NZtPGSxRFpBRoS6mI0D53bYpzPTouXKdGTHwHUf64GszWA87c\nicF4aPkRRH1TOV8NMh+2kL0nbQw/7xlPXtNNRTZWhhAVCwer/G2KOD31x3287kUbNd4uEoBw59Mg\nXNPjKx95ErMRe3D43C9PVBqNDVZ5yoDzP8VWEHO75jDFiQXRLs2IQVIoYq6HO9VrAyDfMZSI1zYq\nhlfzyvJbnouft9Q7zmRwKWtRh5dHKQ2Fuxg0SI3kPlxN11O9KXgQDx5VvJhCj14GEapkYTwUjXbn\n2zqM0PVLEGq6Mt6CMxda6RSo4Vi4kJqOCVG3pR/kd+o2aWrMIQetqvipZQ=="
+        signature="AAAAB3NzaC1yc2EAAAEAWARe6cScN5t0aFy0lBA1EbC/JoyRxsEuPsWtFZ3qw12lXYcmTXuq1v/0lwqcgZQgutQdiavR6O6157uyk0dkfuDXiuOjsngkmgp0oN/kwYxKPVrXMze1tFr8tFBUQU+JeCbvVd+o6LeD7pO29onXqf776N21nX1sRaeT+wX6qNMNEgJ7S3TzwTgMJ4Ub5dMCxXYCX7AW15YzLie213fvU3YiBh1ZHy//ubDb29d/2t941/gAdipjRQiabWK5lpfkmLJWJddlZq3IyFqiXMM1vpaGmiiM5w2fMpuzO8enyRTDtQQwLAxrffxY/n6RbGvUiEU4YzSGLlPE6KUU36dKOw=="
 
-The server verifies the client's signature on the challenge, and then, assuming
-that the above challenge generation algorithm is used, it verfies the server's
-own signature of the challenge by decoding the challenge:
+The server verifies the client's signature on the following authorization
+string:
+
+   McFly;users@svc.domain.tld;aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09
+
+Assuming that the above challenge generation algorithm is used, the server then
+verfies the its own signature of the challenge by decoding the challenge thusly:
 
     b64-server-signature = "aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk="
     b64-challenge = "dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09"
