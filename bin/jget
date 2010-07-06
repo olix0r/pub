@@ -62,7 +62,7 @@ class PubKeyAuthenticator(object):
 
     @inlineCallbacks
     def signAuth(self, auth):
-        data = "{0[id]};{0[realm]};{0[challenge]}".format(auth)
+        data = auth["challenge"]
         signature = yield self.agent.signData(self.pubKey, data)
         returnValue(signature.encode("base64").replace("\n", ""))
 

@@ -1,4 +1,4 @@
-import os
+import os, time
 from hashlib import sha512
 
 from twisted.cred.error import LoginFailed
@@ -12,7 +12,7 @@ from twisted.web.test.test_httpauth import RequestMixin
 
 from zope.interface.verify import verifyObject
 
-from jersey.cred.cred import IPrivateKey, PubKeyCredentialFactory
+from jersey.cred.guard import ISignedAuthorization, PubKeyCredentialFactory
 
 
 
@@ -125,9 +125,9 @@ class JerseyAuthTests(RequestMixin, TestCase):
         c = self.credentialFactory.getChallenge(req)
         auth = self.buildAuth(challenge=c["challenge"])
         auth["signature"] = self.signAuth(auth, req)
-        response = self.formatResponse(**auth)
+        rsp = self.formatResponse(**auth)
 
-        creds = self.credentialFactory.decode(response, req)
+        creds = self.credentialFactory.decode(rsp, req)
         self.assertSignature(creds)
 
 
@@ -151,29 +151,29 @@ class JerseyAuthTests(RequestMixin, TestCase):
     def test_noUsername(self):
         """
         L{PubKeyCredentialFactory.decode} raises L{LoginFailed} if the response
-        has no username field or if the username field is empty.
+        has no id field or if the id field is empty.
         """
         c = self.credentialFactory.getChallenge(self.request)
         auth = self.buildAuth(challenge=c["challenge"])
-        del auth["username"]
+        del auth["id"]
         rsp = self.formatResponse(**auth)
         e = self.assertRaises(LoginFailed,
             self.credentialFactory.decode, rsp, self.request)
-        self.assertEqual(str(e), "'username' not in authorization.")
+        self.assertEqual(str(e), "'id' not in authorization")
 
 
     def test_emtpyUsername(self):
         """
         L{PubKeyCredentialFactory.decode} raises L{LoginFailed} if the response
-        has no username field or if the username field is empty.
+        has no id field or if the id field is empty.
         """
         c = self.credentialFactory.getChallenge(self.request)
         auth = self.buildAuth(challenge=c["challenge"])
-        auth["username"] = ""
+        auth["id"] = ""
         rsp = self.formatResponse(**auth)
         e = self.assertRaises(LoginFailed,
             self.credentialFactory.decode, rsp, self.request)
-        self.assertEqual(str(e), "Invalid username.")
+        self.assertEqual(str(e), "No identifier")
 
 
     def test_noChallenge(self):
@@ -186,13 +186,13 @@ class JerseyAuthTests(RequestMixin, TestCase):
         rsp = self.formatResponse(**auth)
         e = self.assertRaises(LoginFailed,
             self.credentialFactory.decode, rsp, self.request)
-        self.assertEqual(str(e), "'challenge' not in authorization.")
+        self.assertEqual(str(e), "'challenge' not in authorization")
 
 
     def test_checkSignature(self):
         """
         L{PubKeyCredentialFactory.decode} returns an L{IUsernameDigestHash}
-        provider which can verify a hash of the form 'username:realm:password'.
+        provider which can verify a hash of the form 'id:realm:password'.
         """
         c = self.credentialFactory.getChallenge(self.request)
         auth = self.buildAuth(challenge=c["challenge"])
@@ -202,7 +202,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
         creds = self.credentialFactory.decode(response, self.request)
 
         try:
-            verifyObject(IPrivateKey, creds)
+            verifyObject(ISignedAuthorization, creds)
         except:
             err = "{0.__class__.__name__} is not a private key".format(creds)
             self.fail(err)
@@ -228,37 +228,16 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
         exc = self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, 'badChallenge', self.request)
-        self.assertEqual(str(exc), "Invalid challenge value.")
+        self.assertEqual(str(exc), "Invalid challenge value")
 
-        badData = "realm;{0};clientip;time".format(seed).encode("base64"
-                ).replace("\n", "")
-        badChallenge = "notasig-{1}-{0}".format(seed, badData)
-
-        exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyChallenge, badChallenge, self.request)
-        self.assertEqual(str(exc), 'Invalid challenge value.')
-
-
-    def test_badSeed(self):
-        """
-        L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the given
-        seed from the response does not match the seed encoded in the opaque.
-        """
-        credentialFactory = FakeCredentialFactory(self.realm)
-        c = credentialFactory.getChallenge(self.request)
-
-        badSeed = "1234567890"
-        parts = c["challenge"].split(";", 2)
-        badChallenge = ";".join(parts[0:2] + [badSeed,])
+        badSig = "notasig".encode("base64").replace("\n", "")
+        badData = "realm;clientip;time;{0}".format(seed
+                ).encode("base64").replace("\n", "")
+        badChallenge = "{0};{1}".format(badSig, badData)
 
         exc = self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
-        self.assertEqual(str(exc), "Invalid challenge value.")
-
-        badChallenge = ";".join(parts[0:2] + ["",])
-        exc = self.assertRaises(LoginFailed,
-            credentialFactory._verifyChallenge, badChallenge, self.request)
-        self.assertEqual(str(exc), "Invalid challenge value.")
+        self.assertEqual(str(exc), "Invalid signature")
 
 
     def test_incompatibleClientIP(self):
@@ -275,14 +254,13 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.assertNotEqual(self.request.getClientIP(), badAddress.host)
 
         badRequest = self.makeRequest("GET", badAddress)
-        seed = self.getSeedFromChallenge(c["challenge"])
-        badChallenge = credentialFactory._generateChallenge(seed, badRequest)
+        badChallenge = credentialFactory.generateChallenge(badRequest)
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
 
 
-    def test_oldChallenge(self):
+    def test_expiredChallenge(self):
         """
         L{PubKeyCredentialFactory.decode} raises L{LoginFailed} when the given
         opaque is older than C{PubKeyCredentialFactory.CHALLENGE_LIFETIME_SECS}
@@ -293,10 +271,10 @@ class JerseyAuthTests(RequestMixin, TestCase):
         client = self.clientAddress.host
 
         oldTime = "-137876876"
-        key = "{0.realm};{1};{2};{3}".format(self, seed, client, oldTime)
-        digest = sha512(key + credentialFactory._secret).hexdigest()
-        ekey = key.encode("base64").replace("\n", "")
-        oldChallenge = "{0}-{1}-{2}".format(digest, ekey, seed)
+        c = "{0.realm};{1};{2};{3}".format(self, client, oldTime, seed)
+        signed = credentialFactory._sign(c).encode("base64")
+        encoded = c.encode("base64").replace("\n", "")
+        oldChallenge = "{0};{1}".format(signed, encoded)
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, oldChallenge, self.request)
@@ -313,7 +291,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
         seed = self.getSeedFromChallenge(c["challenge"])
         time = '0'
 
-        key = "{0.realm};{1};{2};{3}".format(self, seed, client, time)
+        key = "{0.realm};{1};{2};{3}".format(self, client, time, seed)
         digest = sha512(key + "this is not the right pkey").hexdigest()
         eKey = key.encode("base64").replace("\n", "")
         badChallenge = ";".join((digest, eKey, seed))
@@ -323,13 +301,10 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
 
     def buildAuth(self, **kw):
-        if 'username' not in kw:
-            kw['username'] = self.username
+        if 'id' not in kw:
+            kw['id'] = self.username
         if 'realm' not in kw:
             kw['realm'] = self.realm
-
-        privKey = kw.get("privKey", self.keys["antelope"].priv)
-
         return kw
 
 
@@ -337,19 +312,17 @@ class JerseyAuthTests(RequestMixin, TestCase):
         """
         Calculate the response for the given challenge
         """
-        data = str("{0[username]};{0[realm]};{0[challenge]}"
-                   ).format(auth)
-
-        kp = self.keys[auth["username"]]
-        signature = kp.priv.sign(data)
-        self.assertTrue(kp.pub.verify(signature, data))
-
+        kp = self.keys[auth["id"]]
+        signature = kp.priv.sign(auth["challenge"])
+        self.assertTrue(kp.pub.verify(signature, auth["challenge"]))
         return signature.encode("base64").replace("\n", "")
 
 
     def assertSignature(self, creds):
-        key = self.keys[creds.username].pub
-        self.assertTrue(key.verify(creds.signature, creds.data))
+        key = self.keys[creds.identifier].pub
+        self.assertTrue(key.verify(creds.signature, creds.data),
+                "{0.signature!r} is not a signature of {0.data!r}".format(
+                creds))
 
 
     def formatResponse(self, quotes=True, **kw):
@@ -361,6 +334,8 @@ class JerseyAuthTests(RequestMixin, TestCase):
 
 
     def getSeedFromChallenge(self, challenge):
-        return challenge.split(";", 2)[2]
+        sig, raw = challenge.split(";")
+        realm, client, t, seed = raw.decode('base64').split(";")
+        return seed
 
 

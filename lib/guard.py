@@ -1,15 +1,12 @@
 import binascii, hashlib, time
 
 from twisted.application.service import IService, Service
-
-from twisted.cred.error import LoginFailed, UnauthorizedLogin
 from twisted.cred.checkers import ICredentialsChecker
-
+from twisted.cred.error import LoginFailed, UnauthorizedLogin
 from twisted.internet.defer import inlineCallbacks, returnValue
-
 from twisted.python.components import registerAdapter
 from twisted.python.randbytes import secureRandom
-
+from twisted.web.guard import HTTPAuthSessionWrapper
 from twisted.web.iweb import ICredentialFactory
 
 from zope.interface import Interface, Attribute, implements
@@ -20,16 +17,18 @@ from jersey.cred.service import IPublicKeyService
 
 
 
-class IPrivateKey(Interface):
+class ISignedAuthorization(Interface):
     """Based on twisted.cred.credentials.ISSHPrivateKey"""
+
     identifier = Attribute("Credential's entity")
     client = Attribute("Client IP")
     data = Attribute("Signed data")
     signature = Attribute("The signed data")
 
 
-class PrivateKey(object):
-    implements(IPrivateKey)
+
+class SignedAuthorization(object):
+    implements(ISignedAuthorization)
 
     def __init__(self, identifier, client, data, signature):
         self.identifier = identifier
@@ -44,7 +43,7 @@ class JerseyChecker(object):
     """
     implements(ICredentialsChecker)
 
-    credentialInterfaces = (IPrivateKey, )
+    credentialInterfaces = (ISignedAuthorization, )
 
     def __init__(self, keyService):
         self.svc = keyService
@@ -140,6 +139,8 @@ class PubKeyCredentialFactory(object):
         return secureRandom(self.randLength)
 
 
+    _challengeFormat = "{realm}{sep}{client}{sep}{time}{sep}{seed}"
+
     def generateChallenge(self, request):
         """Generate a challenge for the request.
         
@@ -148,8 +149,8 @@ class PubKeyCredentialFactory(object):
         client = request.getClientIP() or "0.0.0.0"
         seed = self._generateSecret().encode("base64").replace("\n", "")
         now = self._getTime()
-        raw = "{0.realm}{0.sep}{1}{0.sep}{2}{0.sep}{3}".format(
-                self, client, now, seed)
+        raw = self._challengeFormat.format(realm=self.realm, client=client,
+                time=now, seed=seed, sep=self.sep)
         encoded = raw.encode("base64").replace("\n", "")
         signed = self._sign(raw).encode("base64").replace("\n", "")
         return self.sep.join((signed, encoded))
@@ -158,6 +159,7 @@ class PubKeyCredentialFactory(object):
     def _verifyChallenge(self, challenge, request):
         """Verify a challenge as returned from _generateChallenge.
         """
+        log.debug("Verifying challenge: {0}".format(challenge))
         try:
             signature, encoded = challenge.split(self.sep)
             raw = encoded.decode("base64")
@@ -180,42 +182,68 @@ class PubKeyCredentialFactory(object):
     def _digest(self, value):
         return hashlib.new(self.digestAlgorithm, value).digest()
 
+
+    # You know, it would be interesting if the service could have a KeyPair so
+    # to that it could *encrypt* the challenge to itself.  Furthermore, it's
+    # possible that the server could generate a signature for this challenge,
+    # and the client then has the ability to verify the server's challenge.
+
     def _sign(self, value):
         return self._digest("{1}{0.sep}{0._secret}".format(self, value))
 
     def _verify(self, signature, value):
         return bool(self._sign(value) == signature.decode("base64"))
 
+
     def _timeExpired(self, t):
         return bool(int(t) + self.sessionLength < self._getTime())
 
 
     def _parseAuth(self, response):
-        def unQuote(s):
-            if s and (s[0] in "\"\'") and (s[0] == s[-1]):
-                s = s[1:-1]
-            return s
-
         auth = dict()
         for segment in response.replace("\n", " ").split(","):
             key, val = [s.strip() for s in segment.split("=", 1)]
-            auth[key] = unQuote(val)
-
+            auth[key] = self._unQuote(val)
         return auth
+
+    @staticmethod
+    def _unQuote(s):
+        if s and (s[0] in "\"\'") and (s[0] == s[-1]):
+            s = s[1:-1]
+        return s
 
 
     def _buildCredentials(self, auth, request):
-        log.msg("Building credentials from {0!r}".format(auth))
+        log.debug("Building credentials from {0!r}".format(auth))
         if not auth["id"]:
             raise LoginFailed("No identifier")
 
         client = IP(request.getClientIP() or '0.0.0.0')
-        data = "{1[id]}{0.sep}{1[realm]}{0.sep}{1[challenge]}".format(
-                self, auth)
+        data = auth["challenge"]
         sig = auth["signature"].decode("base64")
-        creds = PrivateKey(auth["id"], client, data, sig)
+        creds = SignedAuthorization(auth["id"], client, data, sig)
 
         return creds
 
+
+
+class Guard(HTTPAuthSessionWrapper):
+
+    def _login(self, creds):
+        log.msg("Logging in: {0!r}".format(creds))
+        return HTTPAuthSessionWrapper._login(self, creds)
+
+
+    def _selectParseHeader(self, header):
+        log.debug("Finding an authenticator for {0}".format(header))
+
+        scheme, elements = header.split(' ', 1)
+        for fact in self._credentialFactories:
+            if fact.scheme.lower() == scheme.lower():
+                log.debug("Found an authenticator: {0}".format(fact))
+                return (fact, elements)
+
+        log.warn("No matching authenticator found for {0}".format(scheme))
+        return (None, None)
 
 
