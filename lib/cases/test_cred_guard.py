@@ -1,8 +1,7 @@
 import os, time
-from hashlib import sha512
+from hashlib import sha256
 
 from twisted.cred.error import LoginFailed
-from twisted.python import log
 from twisted.python.filepath import FilePath
 from twisted.internet.address import IPv4Address
 from twisted.trial import util
@@ -12,6 +11,7 @@ from twisted.web.test.test_httpauth import RequestMixin
 
 from zope.interface.verify import verifyObject
 
+from jersey import log
 from jersey.cred.guard import ISignedAuthorization, PubKeyCredentialFactory
 
 
@@ -27,13 +27,13 @@ class FakeCredentialFactory(PubKeyCredentialFactory):
         self._secret = "0"
 
 
-    def _generateSeed(self):
+    def generateSeed(self):
         """Generate a static seed"""
-        return "178288758716122392881254770685"
+        return "178288758716122392881254770685".encode('base64'
+                ).replace('\n', '')
 
 
-    @property
-    def _now(self):
+    def _getTime(self):
         """Return a stable time"""
         return 0
 
@@ -162,7 +162,7 @@ class JerseyAuthTests(RequestMixin, TestCase):
         self.assertEqual(str(e), "'id' not in authorization")
 
 
-    def test_emtpyUsername(self):
+    def test_emptyUsername(self):
         """
         L{PubKeyCredentialFactory.decode} raises L{LoginFailed} if the response
         has no id field or if the id field is empty.
@@ -292,9 +292,10 @@ class JerseyAuthTests(RequestMixin, TestCase):
         time = '0'
 
         key = "{0.realm};{1};{2};{3}".format(self, client, time, seed)
-        digest = sha512(key + "this is not the right pkey").hexdigest()
+        digest = sha256(key + "this is not the right pkey"
+                ).digest().encode("base64").replace("\n", "")
         eKey = key.encode("base64").replace("\n", "")
-        badChallenge = ";".join((digest, eKey, seed))
+        badChallenge = ";".join((digest, eKey))
 
         self.assertRaises(LoginFailed,
             credentialFactory._verifyChallenge, badChallenge, self.request)
@@ -333,9 +334,19 @@ class JerseyAuthTests(RequestMixin, TestCase):
                 if v is not None])
 
 
-    def getSeedFromChallenge(self, challenge):
-        sig, raw = challenge.split(";")
-        realm, client, t, seed = raw.decode('base64').split(";")
-        return seed
+    def getChallengeValues(self, challenge):
+        sig, enc = challenge.split(";")
+        raw = enc.decode('base64')
+        try:
+            realm, client, t, seed = raw.split(";")
+        except Exception, e:
+            log.error(str(e))
+            log.error(challenge)
+            raise
+        return realm, client, t, seed
 
+    def getSeedFromChallenge(self, challenge):
+        s = self.getChallengeValues(challenge)[-1]
+        log.debug("Seed: {0}".format(s))
+        return s
 
