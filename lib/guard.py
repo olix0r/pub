@@ -142,7 +142,7 @@ class PubKeyCredentialFactory(object):
         if not auth["id"]:
             raise LoginFailed("No identifier")
 
-        client = IP(request.getClientIP() or '0.0.0.0')
+        client = request.getClientIP() or '0.0.0.0'
         data = self._authFmt.format(a=auth, s=self.sep)
         sig = auth["signature"].decode("base64")
         creds = SignedAuthorization(auth["id"], client, data, sig)
