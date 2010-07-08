@@ -283,7 +283,7 @@ string:
    McFly;users@svc.domain.tld;aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09
 
 Assuming that the above challenge generation algorithm is used, the server then
-verfies the its own signature of the challenge by decoding the challenge thusly:
+verfies its own signature of the challenge by decoding the challenge thusly:
 
     b64-server-signature = "aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk="
     b64-challenge = "dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09"
