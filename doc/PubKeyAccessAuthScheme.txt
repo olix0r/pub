@@ -1,4 +1,4 @@
-YAHOO! INTERNAL DRAFT VERSION 0.3.1
+DRAFT VERSION 0.4
 
 
 Oliver Vaughn Gould <ver@yahoo-inc.com>
@@ -14,8 +14,7 @@ June 2010
   0.1  Status of this Memo
   ------------------------
 
-This document specifies a DRAFT protocol for the Internet community.  This
-memo is currently CONFIDENTIAL.
+This document specifies a DRAFT protocol for the Internet community.
 
 
   0.2  Copyright Notice
@@ -46,15 +45,16 @@ method to challenge-based HTTP client authentication.
   1.2  Specification of PubKey.v1 Headers
   1.2.1  The WWW-Authenticate Response Header
   1.2.2  The Authorize Request Header
-  1.3  Challenge Generation
-  1.4  Example
-  1.5  Proxy-Authentication and Proxy-Authorization
-  1.6  Operational Considerations
-  1.6.1  Replay Attacks
-  1.6.2  Man-in-the-Middle Attacks
-  1.6.3  Brute Force Attacks
-  1.6.4  Spoofing by Counterfeit Servers
+  1.3  Example
+  1.4  Proxy-Authentication and Proxy-Authorization
+  1.5  Operational Considerations
+  1.5.1  Replay Attacks
+  1.5.2  Man-in-the-Middle Attacks
+  1.5.3  Brute Force Attacks
+  1.5.4  Spoofing by Counterfeit Servers
   2  References
+  A  Appendices
+  A.1  Challenge Generation
 
 
   1  PubKey Access Authentication Scheme, Version 1
@@ -108,6 +108,7 @@ follows:
     pubkey-challenge  = 1#( realm | [domain] | challenge )
 
     domain            = "domain" "=" <"> URI ( 1*SP URI ) <">
+    URI               = absoluteURI | abs_path
     challenge         = "challenge" "=" quoted-string
 
 The meanings of the values of the directives used above are as follows:
@@ -164,7 +165,7 @@ The values of the challenge and realm fields must be those supplied in the
 WWW-Authenticate response header for the entity being requested.
 
     identifier
-      The client identifier in the specified realm.
+      The client identifier in the specified realm.  I.e. the client's username.
 
     signature
       A quoted base 64 encoded string representation of a signature generated
@@ -178,13 +179,18 @@ missing, the proper response is 400 Bad Request.  If the signature is
 invalid, then a login failure should be logged, since repeated login
 failures from a single client may indicate an malfeasance.
 
+The client should be able to reuse this Authorization until a 401
+Unauthorized is reached, or an Authentication-Info header provides a new
+challenge.
+
 
   1.2.3  Authentication-Info Header
   ---------------------------------
 
 The optional Authentication-Info header may be used by the server to
 communicate some information regarding the successful authentication in the
-response.
+response.  Specifically, this header can be used to send a new challenge to
+an authorized client.
 
     AuthenticationInfo = "Authentication-Info" ":" auth-info
     auth-info          =  1#( next-challenge  )
@@ -198,14 +204,158 @@ The meanings of the values used above are as follows:
       used Authorization header will result in a 401 Unauthorized response.
 
 
-  1.3  Challenge Generation
+  1.3  Example
+  ------------
+
+The following example assumes that an access-protected resource is being
+requested from the server via a GET request.  The URI of the document is
+"http://svc.domain.tld/object".  Both client and server know the public key
+for the user identified as "McFly" in the realm "users@svc.domain.tld".
+
+The first time the client requests the document, no Authorization header is
+sent, so the server responds with:
+
+    401 Unauthorized
+    WWW-Authenticate: PubKey.v1
+        challenge="aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09",
+        realm="users@svc.domain.tld"
+
+The client's user agent determines the client's identifier and private key
+to use for the realm.  The user agent then uses this private key to sign
+the server's challenge, prompting the user as neccessary.  Finally, the
+client sends a new request including the Authorization header:
+
+    Authorization: PubKey.v1
+        id='McFly",
+        challenge="aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09",
+        realm="users@svc.domain.tld",
+        signature="AAAAB3NzaC1yc2EAAAEAWARe6cScN5t0aFy0lBA1EbC/JoyRxsEuPsWtFZ3qw12lXYcmTXuq1v/0lwqcgZQgutQdiavR6O6157uyk0dkfuDXiuOjsngkmgp0oN/kwYxKPVrXMze1tFr8tFBUQU+JeCbvVd+o6LeD7pO29onXqf776N21nX1sRaeT+wX6qNMNEgJ7S3TzwTgMJ4Ub5dMCxXYCX7AW15YzLie213fvU3YiBh1ZHy//ubDb29d/2t941/gAdipjRQiabWK5lpfkmLJWJddlZq3IyFqiXMM1vpaGmiiM5w2fMpuzO8enyRTDtQQwLAxrffxY/n6RbGvUiEU4YzSGLlPE6KUU36dKOw=="
+
+The server verifies the client's signature on the following authorization
+string:
+
+   McFly;users@svc.domain.tld;aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09
+
+Assuming that the challenge generation algorithm described in section A.1
+is used, the server then verfies its own signature of the challenge by
+decoding the challenge thusly:
+
+    b64-server-signature = "aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk="
+    b64-challenge = "dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09"
+    challenge = "users@svc.domain.tld;1278112799;127.0.0.1;m8o+rTkokEQO0QKEHv/o4w=="
+
+After the server's signature is verified, it checks the realm, expiration, and
+source IP encoded in the challenge to authorize the request.  
+
+
+  1.4  Proxy-Authentication and Proxy-Authorization
+  -------------------------------------------------
+
+The PubKey.v1 authentication scheme may also be used for authenticating
+clients to proxies, proxies to proxies, or proxies to origin servers by use
+of the Proxy-Authenticate and Proxy-Authorization headers.  These headers
+are instances of the Proxy-Authenticate and Proxy-Authorization headers
+specified in sections 10.33 and 10.34 of the HTTP/1.1 specification [RFC
+2616] and their behavior is subject to restrictions described there.  The
+transactions for proxy authentication are very similar to those already
+described.  Upon receiving a request which requires authentication, the
+proxy/server must issue the "407 Proxy Authentication Required" response
+with a "Proxy-Authenticate" header.  The pubkey-challenge used in the
+Proxy-Authenticate header is the same as that for the WWW-Authenticate
+header as defined above in section 1.2.1.
+
+The client/proxy must then re-issue the request with a Proxy-Authorization
+header, with directives as specified for the Authorization header in
+section 1.2.2 above.
+
+Note that in principle a client could be asked to authenticate itself to
+both a proxy and an end-server, but never in the same response.
+
+
+  1.5  Operational Considerations
+  -------------------------------
+
+  1.5.1  Replay Attacks
+  ---------------------
+
+The challenge generation scheme described in section A.1 includes a
+server-signed time, client IP address, and random seed; after verifying its own
+signature, the server verifies that the authorized request is from the expected
+source and within the allowed session time.
+
+The server may preempt the need for an expired transaction by sending a new
+challenge in an AuthorizationInfo header.
+
+
+  1.5.2  Man-in-the-Middle Attacks
+  --------------------------------
+
+In principal, it is not possible to distinguish untrusted intermediaries
+from trustworthy (e.g. HTTP or SOCKS) proxy servers.  Therefore, the
+PubKey.v1 scheme does not attempt to implement any form of server
+authentication or endpoint confidentiality.  A client's Authorization token
+may be stolen by intermediary servers.  
+
+Some form of socket-or-application-layer cryptography should be utilized to
+establish confidentiality between endpoints.
+
+
+  1.5.3  Brute Force Attacks
+  --------------------------
+
+Brute force attacks against strong cryptographic keys (currently, RSA 2048
+or stronger) are particularly ineffective, which is a major advantage of this
+authentication scheme over, for instance, the Digest scheme.
+
+The challenge generation algorithm described in section A.1 uses a secret
+value and digest algorithm to verify the returned, signed challenge.  If an
+authorized attacker gains access to this value and determine the digest
+algorithm, it can override values encoded in the server's challenge.  Note
+that such an attack can only be exploited by sending a manipulated challenge
+value with a valid signature from a client authorized to the given realm.
+
+The randomized seed value in the challenge helps to mitigate cryptanalytic
+attacks on the server's secret by introducing entropy into the signature.
+
+
+  1.5.4  Spoofing by Counterfeit Servers
+  --------------------------------------
+
+The PubKey.v1 authentication scheme does not provide any means for a client
+to validate a server.
+
+Some form of socket-or-application-layer cryptography should be utilized to
+establish confidentiality between endpoints.
+
+
+  2 References
+  ------------
+
+[RFC 2222]  Simple Authentication and Security Layer (SASL)
+[RFC 2616]  Hypertext Transfer Protocol -- HTTP/1.1
+[RFC 2617]  HTTP Authentication: Basic and Digest Access Authentication
+[RFC 2818]  HTTP Over TLS
+[RFC 2743]  Generic Security Service Application Program Interface
+            Version 2, Update 1
+[RFC 4251]  The Secure Shell (SSH) Protocol Architecture
+[RFC 4252]  The Secure Shell (SSH) Authentication Protocol
+
+
+Portions of this document were based directly on these references:
+  Copyright (C) The Internet Society (1999, 2006).  All Rights Reserved.
+
+
+  A  Appendices
+  -------------
+
+  A.1  Challenge Generation
   -------------------------
 
 From a client's perspective, the challenge value is an opaque blob of data
 to be signed.  However, the server can encode data into its challenge value
 in order to authenticate clients without maintaining state for all such
-requests.  One possible challenge generation scheme is discussed
-below, but it can be replaced with no impact on the protocol.
+requests.  One possible challenge generation scheme is discussed below, but
+it can be replaced with no impact on the protocol.
 
     challenge-value = server-signature ";" encoded-challenge
 
@@ -249,145 +399,8 @@ The meanings of the values used above are as follows:
       It would also be possible for a server to use a private key instead
       of a server-secret-value.
 
-
-  1.4  Example
-  ------------
-
-The following example assumes that an access-protected resource is being
-requested from the server via a GET request.  The URI of the document is
-"http://svc.domain.tld/object".  Both client and server know the public key
-for the user identified as "McFly" in the realm "users@svc.domain.tld".
-
-The first time the client requests the document, no Authorization header is
-sent, so the server responds with:
-
-    401 Unauthorized
-    WWW-Authenticate: PubKey.v1
-        challenge="aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09",
-        realm="users@svc.domain.tld"
-
-The client's user agent determines the client's identifier and private key
-to use for the realm.  The user agent then uses this private key to sign
-the server's challenge, prompting the user as neccessary.  Finally, the
-client sends a new request including the Authorization header:
-
-    Authorization: PubKey.v1
-        id='McFly",
-        challenge="aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09",
-        realm="users@svc.domain.tld",
-        signature="AAAAB3NzaC1yc2EAAAEAWARe6cScN5t0aFy0lBA1EbC/JoyRxsEuPsWtFZ3qw12lXYcmTXuq1v/0lwqcgZQgutQdiavR6O6157uyk0dkfuDXiuOjsngkmgp0oN/kwYxKPVrXMze1tFr8tFBUQU+JeCbvVd+o6LeD7pO29onXqf776N21nX1sRaeT+wX6qNMNEgJ7S3TzwTgMJ4Ub5dMCxXYCX7AW15YzLie213fvU3YiBh1ZHy//ubDb29d/2t941/gAdipjRQiabWK5lpfkmLJWJddlZq3IyFqiXMM1vpaGmiiM5w2fMpuzO8enyRTDtQQwLAxrffxY/n6RbGvUiEU4YzSGLlPE6KUU36dKOw=="
-
-The server verifies the client's signature on the following authorization
-string:
-
-   McFly;users@svc.domain.tld;aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk=;dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09
-
-Assuming that the above challenge generation algorithm is used, the server then
-verfies its own signature of the challenge by decoding the challenge thusly:
-
-    b64-server-signature = "aKMpP2pkd3qiDnOUAHJ+pB1VdphaR2tFSF4J7wLWODk="
-    b64-challenge = "dXNlcnNAc3ZjLmRvbWFpbi50bGQ7MTI3ODExMjc5OTsxMjcuMC4wLjE7bThvK3JUa29rRVFPMFFLRUh2L280dz09"
-    challenge = "users@svc.domain.tld;1278112799;127.0.0.1;m8o+rTkokEQO0QKEHv/o4w=="
-
-After the server's signature is verified, it checks the realm, expiration, and
-source IP encoded in the challenge to authorize the request.  
+Depending on the server's resources, it may be desirable to use a cipher
+algorithm instead of a digest algorithm.
 
 
-  1.5  Proxy-Authentication and Proxy-Authorization
-  -------------------------------------------------
-
-The PubKey.v1 authentication scheme may also be used for authenticating
-clients to proxies, proxies to proxies, or proxies to origin servers by use
-of the Proxy-Authenticate and Proxy-Authorization headers.  These headers
-are instances of the Proxy-Authenticate and Proxy-Authorization headers
-specified in sections 10.33 and 10.34 of the HTTP/1.1 specification [RFC
-2616] and their behavior is subject to restrictions described there.  The
-transactions for proxy authentication are very similar to those already
-described.  Upon receiving a request which requires authentication, the
-proxy/server must issue the "407 Proxy Authentication Required" response
-with a "Proxy-Authenticate" header.  The pubkey-challenge used in the
-Proxy-Authenticate header is the same as that for the WWW-Authenticate
-header as defined above in section 1.2.1.
-
-The client/proxy must then re-issue the request with a Proxy-Authorization
-header, with directives as specified for the Authorization header in
-section 1.2.2 above.
-
-Note that in principle a client could be asked to authenticate itself to
-both a proxy and an end-server, but never in the same response.
-
-
-  1.6  Operational Considerations
-  -------------------------------
-
-  1.6.1  Replay Attacks
-  ---------------------
-
-The challenge generation scheme described in section 1.3 includes a
-server-signed time, client IP address, and random seed; after verifying its own
-signature, the server verifies that the authorized request is from the expected
-source and within the allowed session time.
-
-The server may preempt the need for an expired transaction by sending a new
-challenge in an AuthorizationInfo header.
-
-
-  1.6.2  Man-in-the-Middle Attacks
-  --------------------------------
-
-In principal, it is not possible to distinguish untrusted intermediaries
-from trustworthy (e.g. HTTP or SOCKS) proxy servers.  Therefore, the
-PubKey.v1 scheme does not attempt to implement any form of server
-authentication or endpoint confidentiality.  A client's Authorization token
-may be stolen by intermediary servers.  
-
-Some form of socket-or-application-layer cryptography should be utilized to
-establish confidentiality between endpoints.
-
-
-  1.6.3  Brute Force Attacks
-  --------------------------
-
-Brute force attacks against strong cryptographic keys (currently, RSA 2048
-or stronger) are particularly ineffective; this is a major advantage of
-this authentication scheme over, for instance, the Digest scheme.
-
-The challenge generation algorithm described in section 1.3 uses a secret
-value and digest algorithm to verify the returned, signed challenge.  If an
-authorized attacker gains access to this value and determine the digest
-algorithm, it can override values encoded in the server's challenge.  Note
-that such an attacker would need access to an authorized identity in the
-requested realm, so the scope of this attack is rather limited.
-
-The randomized seed value in the challenge helps to mitigate cryptanalytic
-attacks on the server's secret by introducing entropy into the signature.
-
-
-  1.6.4  Spoofing by Counterfeit Servers
-  --------------------------------------
-
-The PubKey.v1 authentication scheme does not provide any means for a client
-to validate a server.
-
-Some form of socket-or-application-layer cryptography should be utilized to
-establish confidentiality between endpoints.
-
-
-  2 References
-  ------------
-
-[RFC 2222]  Simple Authentication and Security Layer (SASL)
-[RFC 2616]  Hypertext Transfer Protocol -- HTTP/1.1
-[RFC 2617]  HTTP Authentication: Basic and Digest Access Authentication
-[RFC 2818]  HTTP Over TLS
-[RFC 2743]  Generic Security Service Application Program Interface
-            Version 2, Update 1
-[RFC 4251]  The Secure Shell (SSH) Protocol Architecture
-[RFC 4252]  The Secure Shell (SSH) Authentication Protocol
-
-
-Portions of this document were based directly on these references:
-  Copyright (C) The Internet Society (1999, 2006).  All Rights Reserved.
-
-
-YAHOO! INTERNAL DRAFT VERSION 0.3.1
+DRAFT VERSION 0.4
