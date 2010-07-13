@@ -157,12 +157,12 @@ class Entity(object):
         return key
 
 
-    _listKeySQL = "SELECT id,type,comment FROM Key WHERE entity=?"
+    _listKeysSQL = "SELECT id,type,comment FROM Key WHERE entity=?"
 
     @inlineCallbacks
     def listKeys(self):
         """Return a list of (id, type, comment) tuples."""
-        rows = yield self._db.runQuery(self._listKeySQL, (self.id,))
+        rows = yield self._db.runQuery(self._listKeysSQL, (self.id,))
         returnValue(rows)
 
 

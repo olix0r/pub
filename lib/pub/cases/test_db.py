@@ -88,9 +88,7 @@ class PubServiceTest(TestCase):
     @inlineCallbacks
     def test_getEntity(self):
         id, species, key = self.ent
-        self.db.setResults([
-            [(species, key.id), ],
-            ])
+        self.db.setResults([[(species, key.id),],])
         ent = yield self.svc.getEntity(id)
         self.assertIsInstance(ent, db.Entity)
         self.assertEquals(ent.id, id)
@@ -114,9 +112,7 @@ class PubServiceTest(TestCase):
 
     @inlineCallbacks
     def test_listSpecies(self):
-        self.db.setResults([
-            [("MONKEYBOT",), ("NANABOT",), ],
-            ])
+        self.db.setResults([[("MONKEYBOT",), ("NANABOT",),],])
         species = yield self.svc.listSpecies()
         self.assertEquals(["MONKEYBOT", "NANABOT"], species)
         self.assertEquals([
@@ -136,7 +132,7 @@ class EntityTest(TestCase):
 
     otherB64Key = "AAAAB3NzaC1yc2EAAAADAQABAAAAgQFs425i4QBI5AlypIIueCFIdiosijL1f0fezNcbPW2JCbbdwVU9TXAadfOLxRoY6Nuliy98ji3Nd8NtjD/Cu9+PfTTHGKoCRakYKdxkUzvI6FXlwgRn2lcWPIg+1lXoO/K9yxcoT43whtZ1CLj24MPU2B75zBUkwmhnaXDNaElxzQ=="
     otherRawKey = otherB64Key.decode("base64")
-    otherEntKey = Key.fromString(otherRawKey)
+    otherKey = Key.fromString(otherRawKey)
 
 
     def setUp(self):
@@ -149,7 +145,7 @@ class EntityTest(TestCase):
     def test_getKey_primary(self):
         comment = "primary key"
         self.db.setResults([
-            [(self.b64Key, comment), ]
+            [(self.b64Key, comment),]
             ])
         key = yield self.entity.getKey()
         self.assertIsInstance(key, db.PublicKey)
@@ -157,37 +153,56 @@ class EntityTest(TestCase):
         self.assertEquals(key.id, self.entKey.id)
         self.assertEquals(key.comment, comment)
         self.assertEquals([
-                ("QUERY", db.Entity._getKeySQL, (self.entKey.id, self.entId)),
-                ], self.db.journal)
+            ("QUERY", db.Entity._getKeySQL, (self.entKey.id, self.entId)),
+            ], self.db.journal)
 
 
     @inlineCallbacks
-    def test_getKey_primary(self):
+    def test_getKey_other(self):
+        comment = "other key"
         self.db.setResults([
-            [(self.b64Key, "primary key"), ]
+            [(self.otherB64Key, comment),]
             ])
-        key = yield self.entity.getKey()
+        key = yield self.entity.getKey(self.otherKey.id)
         self.assertIsInstance(key, db.PublicKey)
-        self.assertEquals(key.data, self.b64Key)
-        self.assertEquals(key.id, self.entKey.id)
+        self.assertEquals(key.data, self.otherB64Key)
+        self.assertEquals(key.id, self.otherKey.id)
+        self.assertEquals(key.comment, comment)
         self.assertEquals([
-                ("QUERY", db.Entity._getKeySQL, (self.entKey.id, self.entId)),
-                ], self.db.journal)
+            ("QUERY", db.Entity._getKeySQL, (self.otherKey.id, self.entId)),
+            ], self.db.journal)
 
 
     @inlineCallbacks
     def test_registerKey(self):
         comment = "other key"
         self.db.setResults([
-            [(self.otherB64Key, comment), ]
+            [(self.otherB64Key, comment),]
             ])
-        key = yield self.entity.getKey(self.otherEntKey.id)
+        key = yield self.entity.getKey(self.otherKey.id)
         self.assertIsInstance(key, db.PublicKey)
         self.assertEquals(key.data, self.otherB64Key)
-        self.assertEquals(key.id, self.otherEntKey.id)
+        self.assertEquals(key.id, self.otherKey.id)
         self.assertEquals([
-                ("QUERY", db.Entity._getKeySQL, (
-                    self.otherEntKey.id, self.entId
-                )), ], self.db.journal)
+            ("QUERY", db.Entity._getKeySQL, (
+                self.otherKey.id, self.entId
+            )), ], self.db.journal)
+
+
+    @inlineCallbacks
+    def test_listKeys(self):
+        com, ocom = "key", "other key"
+        self.db.setResults([
+            [(self.entKey.id, self.entKey.type, com,),
+             (self.otherKey.id, self.otherKey.type, ocom,)]
+            ])
+        keyInfos = yield self.entity.listKeys()
+        self.assertEquals([
+            (self.entKey.id, self.entKey.type, com,),
+            (self.otherKey.id, self.otherKey.type, ocom,)
+            ], keyInfos)
+        self.assertEquals([
+            ("QUERY", db.Entity._listKeysSQL, (self.entId,),),
+            ], self.db.journal)
 
 
