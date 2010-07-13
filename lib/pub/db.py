@@ -89,7 +89,7 @@ class PubService(MultiService):
 
     def search(self, id=None, species=None, keyId=None, comment=None,
             offset=None, count=None):
-        pass
+        raise NotImplemented()
 
 
     _listSpeciesSQL = "SELECT name FROM Species"
@@ -102,10 +102,8 @@ class PubService(MultiService):
 
 
 
-
 class Entity(object):
     implements(iface.IEntity)
-
 
     def __init__(self, id, species, primaryKeyId, db):
         self._db = db
@@ -115,6 +113,8 @@ class Entity(object):
 
 
     def _buildKey(self, key, comment):
+        if not isinstance(key, Key):
+            key = Key.fromString(key)
         return PublicKey(key, self.id, comment, self._db)
 
 
@@ -132,6 +132,8 @@ class Entity(object):
         rows = yield self._db.runQuery(self._getKeySQL, (id, self.id))
         if not rows:
             raise iface.KeyNotFound(id)
+        data, comment = rows[0]
+        data = data.decode("base64")
         k = self._buildKey(data, comment)
         returnValue(k)
 
