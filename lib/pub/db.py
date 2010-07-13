@@ -92,6 +92,15 @@ class PubService(MultiService):
         raise NotImplemented()
 
 
+    _listEntitiesSQL = "SELECT id FROM Entity"
+
+    @inlineCallbacks
+    def listEntities(self):
+        """List all known species."""
+        rows = yield self._db.runQuery(self._listEntitiesSQL)
+        returnValue([name for (name,) in rows])
+
+
     _listSpeciesSQL = "SELECT name FROM Species"
 
     @inlineCallbacks
@@ -195,7 +204,7 @@ class PublicKey(object):
         return self._key.type()
 
 
-    def decrypt(self, data):
+    def encrypt(self, data):
         return self._key.encrypt(data)
 
     def verify(self, sig, data):

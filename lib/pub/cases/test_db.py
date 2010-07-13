@@ -8,6 +8,23 @@ from jersey.cred.pub import db, iface
 
 
 
+class InterfaceTests(TestCase):
+
+    def setUp(self):
+        from zope.interface.verify import verifyClass
+        self.verifyClass = verifyClass
+
+    def test_PubService(self):
+        self.assertTrue(self.verifyClass(iface.IPubService, db.PubService))
+
+    def test_Entity(self):
+        self.assertTrue(self.verifyClass(iface.IEntity, db.Entity))
+
+    def test_PublicKey(self):
+        self.assertTrue(self.verifyClass(iface.IPublicKey, db.PublicKey))
+
+
+
 class _JournalingMockDB(object):
 
     def __init__(self):
@@ -30,11 +47,9 @@ class _JournalingMockDB(object):
         self.journal.append(("TRANSACTION", tx.journal))
         returnValue(ret)
 
-
     def runOperation(self, sql, *args):
         self.journal.append(("EXECUTE", sql,) + args)
         return succeed(None)
-
 
     def runQuery(self, sql, *args):
         self.journal.append(("QUERY", sql,) + args)
@@ -107,6 +122,16 @@ class PubServiceTest(TestCase):
         self.assertEquals(enf.entityId, id)
         self.assertEquals([
                 ("QUERY", db.PubService._getEntitySQL, (id,)),
+                ], self.db.journal)
+
+
+    @inlineCallbacks
+    def test_listEntities(self):
+        self.db.setResults([[("0b0t",), ("ver",),],])
+        ents = yield self.svc.listEntities()
+        self.assertEquals(["0b0t", "ver"], ents)
+        self.assertEquals([
+                ("QUERY", db.PubService._listEntitiesSQL),
                 ], self.db.journal)
 
 
@@ -204,5 +229,6 @@ class EntityTest(TestCase):
         self.assertEquals([
             ("QUERY", db.Entity._listKeysSQL, (self.entId,),),
             ], self.db.journal)
+
 
 

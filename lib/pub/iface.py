@@ -19,7 +19,7 @@ class IPubService(Interface):
     #def deleteEntity(id):
     #    pass
 
-    def listEntities(offset=None, count=None):
+    def listEntities():
         pass
 
     def search(id=None, species=None, keyId=None, comment=None):
