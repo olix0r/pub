@@ -1,0 +1,6 @@
+-- Well-defined globals
+INSERT INTO "Species" VALUES('HOST');
+INSERT INTO "Species" VALUES('HUMAN');
+INSERT INTO "Species" VALUES('SERVICE');
+INSERT INTO "KeyType" VALUES('RSA');
+INSERT INTO "KeyType" VALUES('DSA');
