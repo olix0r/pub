@@ -125,8 +125,6 @@ class Entity(object):
 
     def _buildKey(self, key, comment):
         if isinstance(key, basestring):
-            log.debug("Building key: {0.id} {2} {1!r}".format(
-                    self, key.encode("base64").replace("\n",""), comment))
             try:
                 key = Key.fromString(key)
             except:

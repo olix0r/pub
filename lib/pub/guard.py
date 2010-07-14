@@ -29,7 +29,7 @@ class IPubAuthorization(Interface):
 
 
 class PubAuthorization(object):
-    implements(ISignedAuthorization)
+    implements(IPubAuthorization)
 
     def __init__(self, identifier, realm, client, data, signature, domain=None):
         self.identifier = identifier
@@ -59,14 +59,14 @@ class PubChecker(object):
 
     @inlineCallbacks
     def requestAvatarId(self, cred):
-        log.debug("{0} is requesting an avatar.".format(cred.identifier))
+        log.debug("{0} is requesting an avatar ID.".format(cred.identifier))
         try:
             entity = yield self.svc.getEntity(cred.identifier)
             keyInfo = yield entity.listKeys()
             keys = []
             for keyId, kind, comment in keyInfo:
                 try:
-                    key = yield self.svc.getKey(keyId)
+                    key = yield entity.getKey(keyId)
                 except KeyNotFound, knf:  # Weidness afoot
                     log.warn("Key disappeared! {0}".format(keyId))
                 else:
@@ -83,10 +83,13 @@ class PubChecker(object):
 
     @staticmethod
     def _verifySignatureByKeys(credentials, keys):
+        log.debug("Verifying signature")
         verified = False
         while len(keys) and not verified:
             key = keys.pop()
             verified = key.verify(credentials.signature, credentials.data)
+            if not verified:
+                log.debug("Signature verification failure: {0.id}".format(key))
         return verified
 
 
@@ -146,13 +149,15 @@ class PubKeyCredentialFactory(object):
 
     def buildCredentials(self, auth, request):
         log.debug("Building credentials from {0!r}".format(auth))
-        if not auth["id"]:
+        if not auth.get("id"):
             raise LoginFailed("No identifier")
+        if not auth.get("realm"):
+            raise LoginFailed("No realm")
 
         client = IP(request.getClientIP() or '0.0.0.0')
         data = self._authFmt.format(a=auth, s=self.sep)
         sig = auth["signature"].decode("base64")
-        creds = SignedAuthorization(auth["id"], client, data, sig)
+        creds = PubAuthorization(auth["id"], auth["realm"], client, data, sig)
 
         return creds
 
