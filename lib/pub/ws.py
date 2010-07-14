@@ -47,6 +47,37 @@ class PubResource(Resource):
                 ).get(self.suffix, self.defaultType)
 
 
+    class jsonEncoderClass(json.JSONEncoder):
+
+        def default(self, obj):
+            log.debug("Finding JSON representation for {0!r}".format(obj))
+            if IEntity.providedBy(obj):
+                return {"id": obj.id,
+                        "species": obj.species,
+                        "primaryKeyId": obj.primaryKeyId,
+                        }
+
+            elif IPublicKey.providedBy(obj):
+                return {"id": obj.id,
+                        "type": obj.type,
+                        "data": obj.data,
+                        "comment": obj.comment,
+                        "entityId": obj.entityId,
+                        }
+
+            else:
+                return super(PubJSONEncoder, self).default(obj)
+
+
+    def jsonize(self, obj, request=None):
+        if request:
+            r = json.dump(obj, request, cls=self.jsonEncoderClass)
+            request.write("\n")
+        else:
+            r = json.dumps(obj, cls=self.jsonEncoderClass) + "\n"
+        return r
+
+
 
 class PubServiceResource(PubResource):
 
@@ -60,10 +91,10 @@ class PubServiceResource(PubResource):
 
     def render_GET(self, request):
         uri = request.URLPath().here()
-        return json.dumps({"links": [
+        return self.jsonize({"links": [
                 {"rel":"self", "href":"{0}".format(uri), },
                 {"rel":"Entities", "href":"{0}entities".format(uri), },
-                ]}, cls=PubJSONEncoder) + "\n"
+                ]})
 
 
 registerAdapter(PubServiceResource, IPubService, IResource)
@@ -77,6 +108,8 @@ class EntitiesResource(PubResource):
     def __init__(self, pubSvc):
         PubResource.__init__(self)
         self.pubSvc = pubSvc
+
+        self.putChild("", self)
 
 
     def getChild(self, name, request):
@@ -115,8 +148,7 @@ class EntitiesResource(PubResource):
     @inlineCallbacks
     def _listEntities(self, request):
         ents = yield self.pubSvc.listEntities()
-        json.dump({"entities": ents}, request, cls=PubJSONEncoder)
-        request.write("\n")
+        self.jsonize({"entities": ents}, request)
         request.finish()
 
 
@@ -136,12 +168,12 @@ class EntityResource(PubResource):
 
     def render_GET(self, request):
         uri = request.URLPath().here()
-        return json.dumps({
+        return self.jsonize({
             "entity": self.entity,
             "links": [
                 {"rel":"self", "href":"{0}".format(uri), },
                 {"rel":"Public Keys", "href":"{0}keys".format(uri), },
-                ]}, cls=PubJSONEncoder) + "\n"
+                ]})
 
 
 
@@ -195,8 +227,7 @@ class EntityKeysResource(PubResource):
         keyInfos = {}
         for (id, type, comment) in keyList:
             keyInfos[id] = type, comment
-        json.dump({"keys": keyInfos}, request, cls=PubJSONEncoder)
-        request.write("\n")
+        self.jsonize({"keys": keyInfos}, request)
         request.finish()
 
 
@@ -208,27 +239,6 @@ class PubKeyResource(PubResource):
         self.pubKey = key
 
     def render_GET(self, request):
-        return json.dumps({"key": self.pubKey}, cls=PubJSONEncoder) + "\n"
-
-
-class PubJSONEncoder(json.JSONEncoder):
-
-    def default(self, obj):
-        log.debug("Finding JSON representation for {0!r}".format(obj))
-        if IEntity.providedBy(obj):
-            return {"id": obj.id,
-                    "species": obj.species,
-                    "primaryKeyId": obj.primaryKeyId,
-                    }
-
-        elif IPublicKey.providedBy(obj):
-            return {"id": obj.id,
-                    "type": obj.type,
-                    "data": obj.data,
-                    "entityId": obj.entityId,
-                    }
-
-        else:
-            return super(PubJSONEncoder, self).default(obj)
+        return self.jsonize({"key": self.pubKey})
 
 
