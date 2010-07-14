@@ -9,14 +9,21 @@ from twisted.python.components import registerAdapter
 
 from twisted.web.client import HTTPClientFactory
 from twisted.web.resource import IResource, Resource
+from twisted.web.server import NOT_DONE_YET
 from twisted.web.util import DeferredResource
 
 from jersey import log
-from jersey.cred.service import IPublicKeyService
+from jersey.cred.pub.iface import (IPubService, IEntity, IPublicKey,
+        EntityNotFound, KeyNotFound)
 
 
 
-class JerseyResource(Resource):
+class PubResource(Resource):
+
+    def __init__(self, suffix=None):
+        Resource.__init__(self)
+        self.suffix = suffix
+
 
     @staticmethod
     def splitResourceSuffix(name):
@@ -31,34 +38,46 @@ class JerseyResource(Resource):
         return bool(suffix in getattr(self, "suffixTypes", {}))
 
 
+    def determineResponseContentType(self, request):
+        #if self.suffix is None:
+        #    accept = request.requestHeaders.getRawHeaders("accept", [None])[0]
+        #    if accept:
+        #        contentType = accept
+        return getattr(self, "suffixTypes", {}
+                ).get(self.suffix, self.defaultType)
 
-class PublicKeyServiceResource(JerseyResource):
 
-    def __init__(self, keySvc):
-        JerseyResource.__init__(self)
-        self.keySvc = keySvc
+
+class PubServiceResource(PubResource):
+
+    def __init__(self, pubSvc):
+        PubResource.__init__(self)
+        self.pubSvc = pubSvc
 
         self.putChild("", self)
-        self.putChild("users", UsersResource(keySvc))
+        self.putChild("entities", EntitiesResource(pubSvc))
 
 
-    def render(self, request):
+    def render_GET(self, request):
         uri = request.URLPath().here()
         return json.dumps({"links": [
                 {"rel":"self", "href":"{0}".format(uri), },
-                {"rel":"User keys", "href":"{0}users".format(uri), },
-                ]}) + "\n"
+                {"rel":"Entities", "href":"{0}entities".format(uri), },
+                ]}, cls=PubJSONEncoder) + "\n"
 
 
-registerAdapter(PublicKeyServiceResource, IPublicKeyService, IResource)
+registerAdapter(PubServiceResource, IPubService, IResource)
 
 
 
-class UsersResource(JerseyResource):
+class EntitiesResource(PubResource):
 
-    def __init__(self, keySvc):
-        JerseyResource.__init__(self)
-        self.keySvc = keySvc
+    suffixTypes = {"json": "application/json", }
+
+    def __init__(self, pubSvc):
+        PubResource.__init__(self)
+        self.pubSvc = pubSvc
+
 
     def getChild(self, name, request):
         return DeferredResource(self._getDeferredChild(name, request))
@@ -67,89 +86,149 @@ class UsersResource(JerseyResource):
     @inlineCallbacks
     def _getDeferredChild(self, name, request):
         try:
-            keys = yield self.keySvc.getPublicKeys(name)
+            entity = yield self.pubSvc.getEntity(name)
 
         except KeyError:
             baseName, sfx = self.splitResourceSuffix(name)
             try:
-                keys = yield self.keySvc.getPublicKeys(baseName)
-
+                entity = yield self.pubSvc.getEntity(baseName)
             except KeyError:
                 resource = Resource.getChild(self, name, request)
-
             else:
-                resource = self.buildKeyResource(baseName, keys, sfx)
+                resource = self.buildEntityResource(baseName, entity, sfx)
                 if not resource.suffixIsSupported(sfx):
                     resource = Resource.getChild(self, name, request)
-
         else:
-            resource = self.buildKeyResource(name, keys)
+            resource = self.buildEntityResource(name, entity)
 
         returnValue(resource)
 
 
-    def buildKeyResource(self, name, keys,  suffix=None):
-        return UserPublicKeysResource(name, keys, suffix)
-
-
-
-
-class UserPublicKeysResource(JerseyResource):
-
-
-    def __init__(self, user, keys, suffix=None):
-        JerseyResource.__init__(self)
-        self.user = user
-        self.keys = keys
-        self.suffix = suffix
-
-
-    def determineResponseContentType(self, request):
-        #if self.suffix is None:
-        #    accept = request.requestHeaders.getRawHeaders("accept", [None])[0]
-        #    if accept:
-        #        contentType = accept
-        #
-        return self.suffixTypes.get(self.suffix, "text/plain")
+    def buildEntityResource(self, name, entity, suffix=None):
+        return EntityResource(entity, suffix)
 
 
     def render_GET(self, request):
-        contentType = self.determineResponseContentType(request)
-        assert contentType in self.suffixTypes.values()
-        if contentType == "application/json":
-            content = self.jsonizeKeys()
-        else:
-            content = self.textualizeKeys()
-        request.setHeader("Content-type", contentType)
-        return content
+        self._listEntities(request)
+        return NOT_DONE_YET
+
+    @inlineCallbacks
+    def _listEntities(self, request):
+        ents = yield self.pubSvc.listEntities()
+        json.dump({"entities": ents}, request, cls=PubJSONEncoder)
+        request.write("\n")
+        request.finish()
 
 
-    suffixTypes = {
-        "txt":  "text/plain",
-        "json": "application/json",
-        }
 
-    # TODO Use a JSONEncoder object to build key-dicts.
-    def jsonizeKeys(self):
-        def jsonizeKey(key):
-            blob = key.blob().encode("base64").replace("\n", "")
-            return {"type":key.sshType(), "blob":blob, }
+class EntityResource(PubResource):
+
+    suffixTypes = {"json": "application/json", }
+
+    def __init__(self, entity, suffix=None):
+        PubResource.__init__(self)
+        self.entity = entity
+        self.suffix = suffix
+
+        self.putChild("", self)
+        self.putChild("keys", EntityKeysResource(self.entity))
+
+
+    def render_GET(self, request):
+        uri = request.URLPath().here()
         return json.dumps({
-            "user": self.user,
-            "keys": map(jsonizeKey, self.keys),
-            })+"\n"
+            "entity": self.entity,
+            "links": [
+                {"rel":"self", "href":"{0}".format(uri), },
+                {"rel":"Public Keys", "href":"{0}keys".format(uri), },
+                ]}, cls=PubJSONEncoder) + "\n"
 
 
-    def textualizeKeys(self):
-        def textualizeKey(k):
-            return "{0} {1}".format(k.toString("OPENSSH"), self.user)
-        keys = map(textualizeKey, self.keys)
-        return "\n".join(keys) + "\n"
 
-    formatters = {
-        "text/plain": textualizeKeys,
-        "application/json": jsonizeKeys,
-        }
+class EntityKeysResource(PubResource):
 
+    def __init__(self, entity, suffix=None):
+        PubResource.__init__(self, suffix)
+        self.entity = entity
+
+        self.putChild("", self)
+
+
+    def getChild(self, name, request):
+        return DeferredResource(self._getDeferredChild(name, request))
+
+
+    @inlineCallbacks
+    def _getDeferredChild(self, name, request):
+        try:
+            key = yield self.entity.getKey(name)
+
+        except KeyError:
+            origName = name
+            name, sfx = self.splitResourceSuffix(name)
+            try:
+                entity = yield self.entity.getKey(name)
+            except KeyError:
+                resource = super(EntityKeysResource, self
+                        ).getChild(self, name, request)
+            else:
+                resource = self.buildKeyResource(baseName, key, sfx)
+                if not resource.suffixIsSupported(sfx):
+                    resource = super(EntityKeysResource, self
+                            ).getChild(self, origName, request)
+        else:
+            resource = self.buildKeyResource(name, key)
+
+        returnValue(resource)
+
+    def buildKeyResource(self, name, key, sfx=None):
+        return PubKeyResource(key, sfx)
+
+
+    def render_GET(self, request):
+        self._listKeys(request)
+        return NOT_DONE_YET
+
+    @inlineCallbacks
+    def _listKeys(self, request):
+        keyList = yield self.entity.listKeys()
+        keyInfos = {}
+        for (id, type, comment) in keyList:
+            keyInfos[id] = type, comment
+        json.dump({"keys": keyInfos}, request, cls=PubJSONEncoder)
+        request.write("\n")
+        request.finish()
+
+
+
+class PubKeyResource(PubResource):
+
+    def __init__(self, key, suffix=None):
+        PubResource.__init__(self, suffix)
+        self.pubKey = key
+
+    def render_GET(self, request):
+        return json.dumps({"key": self.pubKey}, cls=PubJSONEncoder) + "\n"
+
+
+class PubJSONEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        log.debug("Finding JSON representation for {0!r}".format(obj))
+        if IEntity.providedBy(obj):
+            return {"id": obj.id,
+                    "species": obj.species,
+                    "primaryKeyId": obj.primaryKeyId,
+                    }
+
+        elif IPublicKey.providedBy(obj):
+            return {"id": obj.id,
+                    "type": obj.type,
+                    "data": obj.data,
+                    "entityId": obj.entityId,
+                    }
+
+        else:
+            return super(PubJSONEncoder, self).default(obj)
 
 

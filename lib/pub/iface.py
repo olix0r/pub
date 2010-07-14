@@ -31,7 +31,6 @@ class IPubService(Interface):
 
 
 
-
 class IEntity(Interface):
 
     id = Attribute("Identifier")
@@ -49,6 +48,7 @@ class IEntity(Interface):
 
     def listKeys():
         """List all of the entity's keys."""
+
 
 
 class IPublicKey(Interface):

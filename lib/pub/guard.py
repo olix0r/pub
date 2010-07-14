@@ -13,40 +13,43 @@ from zope.interface import Interface, Attribute, implements
 
 from jersey import log
 from jersey.inet import IP
-from jersey.cred.service import IPublicKeyService
+from jersey.cred.pub.iface import IPubService, EntityNotFound, KeyNotFound
 
 
 
-class ISignedAuthorization(Interface):
+class IPubAuthorization(Interface):
     """Based on twisted.cred.credentials.ISSHPrivateKey"""
 
     identifier = Attribute("Credential's entity")
+    realm = Attribute("Authorization realm")
     client = Attribute("Client IP")
     data = Attribute("Signed data")
     signature = Attribute("The signed data")
 
 
 
-class SignedAuthorization(object):
+class PubAuthorization(object):
     implements(ISignedAuthorization)
 
-    def __init__(self, identifier, client, data, signature):
+    def __init__(self, identifier, realm, client, data, signature, domain=None):
         self.identifier = identifier
+        self.realm = realm
+        self.domain = domain
         self.client = client
         self.data = data
         self.signature = signature
 
 
 
-class JerseyChecker(object):
+class PubChecker(object):
     """Based on twisted.conch.checkers.SSHPublicKeyDatabase.
     """
     implements(ICredentialsChecker)
 
-    credentialInterfaces = (ISignedAuthorization, )
+    credentialInterfaces = (IPubAuthorization, )
 
-    def __init__(self, keyService):
-        self.svc = keyService
+    def __init__(self, pub):
+        self.svc = pub
 
 
     @staticmethod
@@ -58,10 +61,10 @@ class JerseyChecker(object):
     def requestAvatarId(self, cred):
         log.debug("{0} is requesting an avatar.".format(cred.identifier))
         try:
-            userKeys = yield self.svc.getPublicKeys(cred.identifier)
+            entity = yield self.svc.getEntity(cred.identifier)
 
-        except KeyError, ke:
-            raise self.UnauthorizedLogin("Invalid user", cred.identifier)
+        except EntityNotFound:
+            raise self.UnauthorizedLogin("Invalid entity", cred.identifier)
 
         if not self._verifySignatureByKeys(cred, userKeys):
             raise self.UnauthorizedLogin("Invalid signature")
@@ -78,7 +81,7 @@ class JerseyChecker(object):
         return verified
 
 
-registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
+registerAdapter(PubChecker, IPubService, ICredentialsChecker)
 
 
 
@@ -238,13 +241,11 @@ class Guard(HTTPAuthSessionWrapper):
 
     def _selectParseHeader(self, header):
         log.debug("Finding an authenticator for {0}".format(header))
-
         scheme, elements = header.split(' ', 1)
         for fact in self._credentialFactories:
             if fact.scheme.lower() == scheme.lower():
                 log.debug("Found an authenticator: {0}".format(fact))
                 return (fact, elements)
-
         log.warn("No matching authenticator found for {0}".format(scheme))
         return (None, None)
 

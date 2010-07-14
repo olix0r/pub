@@ -13,7 +13,9 @@ from jersey.cred.pub import iface
 
 def connectDB(dbType, *args, **kw):
     from twisted.enterprise import adbapi
-    adbapi.ConnectionPool(dbType, *args, **kw)
+    kw.setdefault("check_same_thread", False)
+    return adbapi.ConnectionPool(dbType, *args, **kw)
+
 
 
 class PubService(MultiService):
@@ -122,8 +124,15 @@ class Entity(object):
 
 
     def _buildKey(self, key, comment):
+        if isinstance(key, basestring):
+            log.debug("Building key: {0.id} {2} {1!r}".format(
+                    self, key.encode("base64").replace("\n",""), comment))
+            try:
+                key = Key.fromString(key)
+            except:
+                raise ValueError("Invalid key data")
         if not isinstance(key, Key):
-            key = Key.fromString(key)
+            raise ValueError("Invalid key")
         return PublicKey(key, self.id, comment, self._db)
 
 
@@ -134,7 +143,7 @@ class Entity(object):
         return self._db_getKey(id)
 
 
-    _getKeySQL = "SELECT data,comment FROM Key WHERE id=? AND entity=?"
+    _getKeySQL = "SELECT data,comment FROM Key WHERE id=? AND entity_id=?"
 
     @inlineCallbacks
     def _db_getKey(self, id):
@@ -155,7 +164,7 @@ class Entity(object):
             return succeed(pk)
 
         else:
-            return self.runInteraction(self._db_registerKey, pk)
+            return self.db.runInteraction(self._db_registerKey, pk)
 
 
     _registerKeySQL = "INSERT INTO Key VALUES(?,?,?,?,?)"
@@ -166,7 +175,7 @@ class Entity(object):
         return key
 
 
-    _listKeysSQL = "SELECT id,type,comment FROM Key WHERE entity=?"
+    _listKeysSQL = "SELECT id,type,comment FROM Key WHERE entity_id=?"
 
     @inlineCallbacks
     def listKeys(self):

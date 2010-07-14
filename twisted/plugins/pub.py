@@ -16,7 +16,7 @@ from twisted.web.server import Site
 
 from zope.interface import implements
 
-from jersey.cred.pub import db as pubdb, iface
+from jersey.cred.pub import db as pubdb, iface, ws
 
 
 
@@ -42,11 +42,10 @@ class PubOptions(Options):
         ["www-port", "p", _WWW_PORT, "Web Service Port", _toPort],
         ]
 
-
     synopsis = "[options] db-path"
 
     def parseArgs(self, dbPath):
-        self["db"] = dbPath
+        self["db-path"] = dbPath
 
 
 
@@ -65,8 +64,9 @@ class ServiceMaker(object):
         return svc
 
 
-    def connectDB(self, svc, opts):
+    def connectDB(self, opts):
         return pubdb.connectDB("sqlite3", opts["db-path"])
+
 
     def connectWWW(self, svc, opts):
         site = self.buildSite(svc)
