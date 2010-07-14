@@ -48,7 +48,6 @@ class PubResource(Resource):
 
 
     class jsonEncoderClass(json.JSONEncoder):
-
         def default(self, obj):
             log.debug("Finding JSON representation for {0!r}".format(obj))
             if IEntity.providedBy(obj):
@@ -56,7 +55,6 @@ class PubResource(Resource):
                         "species": obj.species,
                         "primaryKeyId": obj.primaryKeyId,
                         }
-
             elif IPublicKey.providedBy(obj):
                 return {"id": obj.id,
                         "type": obj.type,
@@ -64,7 +62,6 @@ class PubResource(Resource):
                         "comment": obj.comment,
                         "entityId": obj.entityId,
                         }
-
             else:
                 return super(PubJSONEncoder, self).default(obj)
 
