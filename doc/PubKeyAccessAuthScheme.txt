@@ -1,8 +1,8 @@
 DRAFT VERSION 0.4
 
 
-Oliver Vaughn Gould <ver@yahoo-inc.com>
-June 2010
+Oliver Vaughn Gould <ver@olix0r.net>
+July 2010
 
 
   PubKey Access Authentication Scheme, Version 1
