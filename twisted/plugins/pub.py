@@ -21,23 +21,23 @@ from jersey.cred.pub.iface import IPubService
 
 
 
+_WWW_PORT = 80 if geteuid() == 0 else 8080
+_MIN_PORT = 1
+_MAX_PORT = 2 ** 16 - 1
+
+def _toPort(port):
+    try:
+        port = int(port)
+    except ValueError:
+        raise UsageError("invalid port: {0}".format(port))
+    else:
+        if not (_MIN_PORT <= port <= _MAX_PORT):
+            raise UsageError("Invalid port number: {0}".format(port))
+    return port
+
+
+
 class PubOptions(Options):
-
-    _WWW_PORT = 80 if geteuid() == 0 else 8080
-    _MIN_PORT = 1
-    _MAX_PORT = 2 ** 16 - 1
-
-    @classmethod
-    def _toPort(Class, port):
-        try:
-            port = int(port)
-        except ValueError:
-            raise UsageError("invalid port: {0}".format(port))
-        else:
-            if not (Class._MIN_PORT <= port <= Class._MAX_PORT):
-                raise UsageError("Invalid port number: {0}".format(port))
-        return port
-
 
     optParameters = [
         ["www-port", "p", _WWW_PORT, "Web Service Port", _toPort],
