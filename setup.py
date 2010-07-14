@@ -21,7 +21,7 @@ setup(
     version = version.short(),
 
     description = "Jersey Cred Services",
-    long_description = description,
+    long_description = "Credential management prototype",
 
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
