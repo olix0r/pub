@@ -1,0 +1,74 @@
+YAHOO! INTERNAL DRAFT
+
+Oliver Vaughn Gould <ver@yahoo-inc.com>
+June 2010
+
+
+  Jersey.Cred Architecture
+  ------------------------
+
+  0  Introduction
+  --------------
+
+  0.1  Status of this Memo
+  ------------------------
+
+This document specifies a DRAFT software architecture.  This memo is currently
+CONFIDENTIAL.
+
+
+  0.2  Copyright Notice
+  ---------------------
+
+Copyright (C) Yahoo!, Inc. (2010).  All rights reseved.
+
+
+  0.3  Abstract
+  -------------
+
+In order to properly leverage public key authentication schemes, 
+ - gs2 and cm3 use cyptographic
+ - storage
+ - intercolo traffic
+- Source of Truth
+- Service exposing safe operations
+
+- Used to establish trust on data.
+  - Need to dissemenate keys.
+  - 
+
+
+  0.4  Table of Contents
+  ----------------------
+
+  1  Introduction
+
+  2  Public Key Management
+  2.1  Overview
+  2.2  Interfaces
+  2.2.1  HTTP(S)
+  2.3  Considerations
+  2.3.1  Performance Budgets
+  2.3.2  Security 
+
+  3  Authorization Realms
+  4  Private Key Agent
+  5  Current Risks
+
+  6  References
+
+
+  1  Introduction
+  ---------------
+
+
+  6  References
+  -------------
+
+[PubKey.v1]  PubKey Access Authentication Scheme, Version 1
+[RFC 4252]   The Secure Shell (SSH) Authentication Protocol
+[RFC 4387]   Internet X.509 Public Key Infrastructure Operational Protocols:
+             Certificate Store Access via HTTP
+
+
+YAHOO! INTERNAL DRAFT

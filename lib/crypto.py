@@ -17,6 +17,14 @@ from jersey import log
 
 class Key(_Key):
 
+
+    _idLen = 8
+
+    @property
+    def id(self):
+        return self.fingerprint().replace(":", "")[-self._idLen:].upper()
+
+
     def encrypt(self, plaintext):
         s = self.keyObject.size() / 8
         ciphertext = ""
@@ -33,6 +41,10 @@ class Key(_Key):
             e, ciphertext = ciphertext[:s], ciphertext[s:]
             plaintext += self.keyObject.decrypt(e)
         return plaintext
+
+
+    def public(self):
+        return self.__class__(self.keyObject.publickey())
 
 
     _cipherMap = {

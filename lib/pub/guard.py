@@ -17,40 +17,43 @@ from zope.interface import Interface, Attribute, implements
 
 from jersey import log
 from jersey.inet import IP
-from jersey.cred.service import IPublicKeyService
+from jersey.cred.pub.iface import IPubService, EntityNotFound, KeyNotFound
 
 
 
-class ISignedAuthorization(Interface):
+class IPubAuthorization(Interface):
     """Based on twisted.cred.credentials.ISSHPrivateKey"""
 
     identifier = Attribute("Credential's entity")
+    realm = Attribute("Authorization realm")
     client = Attribute("Client IP")
     data = Attribute("Signed data")
     signature = Attribute("The signed data")
 
 
 
-class SignedAuthorization(object):
-    implements(ISignedAuthorization)
+class PubAuthorization(object):
+    implements(IPubAuthorization)
 
-    def __init__(self, identifier, client, data, signature):
+    def __init__(self, identifier, realm, client, data, signature, domain=None):
         self.identifier = identifier
-        self.client = IP(client)
+        self.realm = realm
+        self.domain = domain
+        self.client = client
         self.data = data
         self.signature = signature
 
 
 
-class JerseyChecker(object):
+class PubChecker(object):
     """Based on twisted.conch.checkers.SSHPublicKeyDatabase.
     """
     implements(ICredentialsChecker)
 
-    credentialInterfaces = (ISignedAuthorization, )
+    credentialInterfaces = (IPubAuthorization, )
 
-    def __init__(self, keyService):
-        self.svc = keyService
+    def __init__(self, pub):
+        self.svc = pub
 
 
     @staticmethod
@@ -60,14 +63,23 @@ class JerseyChecker(object):
 
     @inlineCallbacks
     def requestAvatarId(self, cred):
-        log.debug("{0} is requesting an avatar.".format(cred.identifier))
+        log.debug("{0} is requesting an avatar ID.".format(cred.identifier))
         try:
-            userKeys = yield self.svc.getPublicKeys(cred.identifier)
+            entity = yield self.svc.getEntity(cred.identifier)
+            keyInfo = yield entity.listKeys()
+            keys = []
+            for keyId, kind, comment in keyInfo:
+                try:
+                    key = yield entity.getKey(keyId)
+                except KeyNotFound, knf:  # Weidness afoot
+                    log.warn("Key disappeared! {0}".format(keyId))
+                else:
+                    keys.append(key)
 
-        except KeyError, ke:
-            raise self.UnauthorizedLogin("Invalid user", cred.identifier)
+        except EntityNotFound:
+            raise self.UnauthorizedLogin("Invalid entity", cred.identifier)
 
-        if not self._verifySignatureByKeys(cred, userKeys):
+        if not self._verifySignatureByKeys(cred, keys):
             raise self.UnauthorizedLogin("Invalid signature")
 
         returnValue(cred.identifier)
@@ -75,14 +87,17 @@ class JerseyChecker(object):
 
     @staticmethod
     def _verifySignatureByKeys(credentials, keys):
+        log.debug("Verifying signature")
         verified = False
         while len(keys) and not verified:
             key = keys.pop()
             verified = key.verify(credentials.signature, credentials.data)
+            if not verified:
+                log.debug("Signature verification failure: {0.id}".format(key))
         return verified
 
 
-registerAdapter(JerseyChecker, IPublicKeyService, ICredentialsChecker)
+registerAdapter(PubChecker, IPubService, ICredentialsChecker)
 
 
 
@@ -139,13 +154,15 @@ class PubKeyCredentialFactory(object):
 
     def buildCredentials(self, auth, request):
         log.debug("Building credentials from {0!r}".format(auth))
-        if not auth["id"]:
+        if not auth.get("id"):
             raise LoginFailed("No identifier")
+        if not auth.get("realm"):
+            raise LoginFailed("No realm")
 
         client = request.getClientIP() or '0.0.0.0'
         data = self._authFmt.format(a=auth, s=self.sep)
         sig = auth["signature"].decode("base64")
-        creds = SignedAuthorization(auth["id"], client, data, sig)
+        creds = PubAuthorization(auth["id"], auth["realm"], client, data, sig)
 
         return creds
 
@@ -251,7 +268,6 @@ class Guard(HTTPAuthSessionWrapper):
             if fact.scheme.lower() == scheme.lower():
                 log.debug("Found an authenticator: {0}".format(fact))
                 return (fact, elements)
-
         log.warn("No matching authenticator found for {0}".format(scheme))
         return (None, None)
 
