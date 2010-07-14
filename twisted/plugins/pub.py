@@ -3,8 +3,7 @@ from time import time
 
 from twisted.application.service import IServiceMaker, MultiService
 from twisted.application.internet import TCPServer
-from twisted.cred.checkers import ICredentialsChecker
-from twisted.cred.portal import IRealm, Portal
+from twisted.cred import checkers, portal
 from twisted.plugin import IPlugin
 from twisted.python import log
 from twisted.python.components import registerAdapter
@@ -17,6 +16,13 @@ from twisted.web.server import Site
 from zope.interface import implements
 
 from jersey.cred.pub import db as pubdb, iface, ws
+
+
+class PubRealm(object):
+    implements(portal.IRealm)
+
+    def requestAvatar(self):
+        pass
 
 
 
@@ -68,16 +74,20 @@ class ServiceMaker(object):
         return pubdb.connectDB("sqlite3", opts["db-path"])
 
 
+    def buildPortal(self, opts):
+        pass
+
+
     def connectWWW(self, svc, opts):
-        site = self.buildSite(svc)
+        site = self.buildSite(svc, opts)
         www = TCPServer(opts["www-port"], site)
         www.setServiceParent(svc)
         return www
 
-
-    def buildSite(self, svc):
+    def buildSite(self, svc, opts):
         root = IResource(svc)
         return Site(root)
+
 
 
 PubMaker = ServiceMaker()
