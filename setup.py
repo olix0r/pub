@@ -1,12 +1,9 @@
 #/usr/bin/env python2.6
 
-from distutils.core import setup
-
-
-description = """
-Jersey Services:
-    - Authentication
-"""
+try:
+    from setuptools import setup
+except:
+    from distutils.core import setup
 
 
 def getVersion():
