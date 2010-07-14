@@ -62,11 +62,20 @@ class PubChecker(object):
         log.debug("{0} is requesting an avatar.".format(cred.identifier))
         try:
             entity = yield self.svc.getEntity(cred.identifier)
+            keyInfo = yield entity.listKeys()
+            keys = []
+            for keyId, kind, comment in keyInfo:
+                try:
+                    key = yield self.svc.getKey(keyId)
+                except KeyNotFound, knf:  # Weidness afoot
+                    log.warn("Key disappeared! {0}".format(keyId))
+                else:
+                    keys.append(key)
 
         except EntityNotFound:
             raise self.UnauthorizedLogin("Invalid entity", cred.identifier)
 
-        if not self._verifySignatureByKeys(cred, userKeys):
+        if not self._verifySignatureByKeys(cred, keys):
             raise self.UnauthorizedLogin("Invalid signature")
 
         returnValue(cred.identifier)
