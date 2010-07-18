@@ -3,4 +3,4 @@ jersey.cred --  Credential management
 
 """
 
-from jersey.cred._version import version
+from pub._version import version

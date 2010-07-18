@@ -15,10 +15,10 @@ from twisted.web.server import Site
 from zope.interface import implements
 
 from jersey import log
-from jersey.cred.pub import db as pubdb, ws
-from jersey.cred.pub.guard import Guard, PubKeyCredentialFactory
-from jersey.cred.pub.iface import IPubService
 
+from pub import db as pubdb, ws
+from pub.guard import Guard, PubKeyCredentialFactory
+from pub.iface import IPubService
 
 
 _WWW_PORT = 80 if geteuid() == 0 else 8080

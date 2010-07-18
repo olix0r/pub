@@ -1,5 +1,5 @@
 """
-jersey.cred.guard --  PubKey.v1 for twisted.web.
+pub.guard --  PubKey.v1 for twisted.web.
 """
 
 
@@ -17,7 +17,8 @@ from zope.interface import Interface, Attribute, implements
 
 from jersey import log
 from jersey.inet import IP
-from jersey.cred.pub.iface import IPubService, EntityNotFound, KeyNotFound
+
+from pub.iface import IPubService, EntityNotFound, KeyNotFound
 
 
 
