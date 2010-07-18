@@ -88,6 +88,13 @@ class EntityNotFound(KeyError):
         self.entityId = entityId
 
 
+class KeyAlreadyExists(KeyError):
+
+    def __init__(self, key, *args, **kw):
+        KeyError.__init__(self, key.id, *args, **kw)
+        self.key = key
+
+
 class KeyNotFound(KeyError):
 
     def __init__(self, keyId, *args, **kw):

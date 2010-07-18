@@ -2,7 +2,7 @@
 SQLite3-backed Pub Service
 """
 
-from sqlite3 import IntegrityError as SQLError
+from sqlite3 import IntegrityError
 
 from twisted.application.service import MultiService
 from twisted.internet.defer import (Deferred, inlineCallbacks, returnValue,
@@ -82,7 +82,7 @@ class PubService(MultiService):
                 yield self._db.runInteraction(
                         self._db_registerEntity, ent, primaryKey)
 
-        except SQLError, err:
+        except IntegrityError, err:
             if err.args[0] == "column id is not unique":
                 raise iface.EntityAlreadyExists(id)
             else:
@@ -171,6 +171,7 @@ class Entity(object):
         """Get a Key belonging to the entity"""
         if id == None:
             id = self.primaryKeyId
+        log.debug("Getting {0}'s key: {1}".format(self.id, id))
         return self._db_getKey(id)
 
 
@@ -190,13 +191,22 @@ class Entity(object):
     def registerKey(self, key, comment, _tx=None):
         log.debug("Registering key: {0.id}".format(key))
         pk = self._buildKey(key, comment)
-        if _tx:
-            # Already in a transaction
-            self._db_registerKey(_tx, pk)
-            return succeed(pk)
 
-        else:
-            return self.db.runInteraction(self._db_registerKey, pk)
+        try:
+            if _tx:
+                # Already in a transaction
+                self._db_registerKey(_tx, pk)
+                return succeed(pk)
+
+            else:
+                return self._db.runInteraction(self._db_registerKey, pk)
+
+        except IntegrityError, err:
+            if err.args[0] == "column id is not unique":
+                raise iface.KeyAlreadyExists(key)
+            else:
+                raise err
+
 
 
     _registerKeySQL = "INSERT INTO Key VALUES(?,?,?,?,?)"
