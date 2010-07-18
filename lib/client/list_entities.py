@@ -6,11 +6,19 @@ from twisted.python.usage import UsageError
 from zope.interface import implements
 
 from pub.client import cli
+from pub.iface import EntityNotFound
 
 
 class Command(cli.Command):
 
-    _longEntityFmt = "{0.id}\t{0.species}\t{0.primaryKeyId}"
+    def _getMaxLen(self, fields):
+        m = 0
+        for f in fields:
+            m = max(m, len(f))
+        return m
+
+
+    _longEntityFmt = "{0.id:{p}}  {0.species}  {0.primaryKeyId}"
 
     @inlineCallbacks
     def execute(self):
@@ -18,11 +26,16 @@ class Command(cli.Command):
             ids = self.config["ids"]
         else:
             ids = yield self.pub.listEntities()
+        p = self._getMaxLen(ids)
 
         if self.config["long"]:
             for id in ids:
-                ent = yield self.pub.getEntity(id)
-                print self._longEntityFmt.format(ent)
+                try:
+                    ent = yield self.pub.getEntity(id)
+                except EntityNotFound:
+                    print "{0:{p}}  Not found".format(id, p=p)
+                else:
+                    print self._longEntityFmt.format(ent, p=p)
         else:
             print "\n".join(ids)
 
