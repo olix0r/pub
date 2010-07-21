@@ -54,6 +54,8 @@ class PubClientOptions(cli.PluggableOptions):
 
     @staticmethod
     def _toUrl(url):
+        if not url:
+            raise cli.UsageError("No Pub server")
         from twisted.python.urlpath import URLPath
         try:
             return URLPath.fromString(url)
@@ -71,9 +73,6 @@ class PubClientOptions(cli.PluggableOptions):
 
     def buildPubService(self):
         url = self["server"]
-        if not url:
-            raise cli.UsageError("No Pub server")
-
         if url.scheme.lower() == "sqlite3":
             if url.netloc:
                 raise cli.UsageError(
