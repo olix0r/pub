@@ -1,4 +1,4 @@
-DRAFT VERSION 0.4
+DRAFT VERSION 0.4.1
 
 
 Oliver Vaughn Gould <ver@olix0r.net>
@@ -177,7 +177,7 @@ WWW-Authenticate response header for the entity being requested.
 If a directive or its value is improper, or required directives are
 missing, the proper response is 400 Bad Request.  If the signature is
 invalid, then a login failure should be logged, since repeated login
-failures from a single client may indicate an malfeasance.
+failures from a single client may indicate malfeasance.
 
 The client should be able to reuse this Authorization until a 401
 Unauthorized is reached, or an Authentication-Info header provides a new
@@ -403,4 +403,4 @@ Depending on the server's resources, it may be desirable to use a cipher
 algorithm instead of a digest algorithm.
 
 
-DRAFT VERSION 0.4
+DRAFT VERSION 0.4.1
