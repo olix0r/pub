@@ -33,7 +33,7 @@ class PubClientOptions(cli.PluggableOptions):
     defaultSubCommand = "list-keys"
 
     optParameters = [
-        ["server", "s", os.getenv("PUB_URL"), "Pub service URI"],
+        ["server", "s", os.getenv("PUB_URL"), "Pub Service URI"],
         ]
 
     optFlags = [
