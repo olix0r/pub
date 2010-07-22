@@ -3,8 +3,7 @@ import os, sys
 
 from jersey import cli, log
 
-from pub import iface
-import pub.client
+from pub import client, iface, version
 
 
 UsageError = cli.UsageError
@@ -30,16 +29,27 @@ class Options(cli.Options):
 
 class PubClientOptions(cli.PluggableOptions):
 
-    commandPackage = pub.client
+    commandPackage = client
     defaultSubCommand = "list-keys"
 
     optParameters = [
-        ["server", "s", os.getenv("PUB_SERVER"), "Pub service URI"],
+        ["server", "s", os.getenv("PUB_URL"), "Pub service URI"],
         ]
 
     optFlags = [
         ["debug", "D", "Print debugging output"],
         ]
+
+
+    def opt_version(self):
+        try:
+            super(PubClientOptions, self).opt_version()
+        except SystemExit:
+            pass
+        print "Pub version: " + version.short()
+        raise SystemExit(0)
+
+    opt_V = lambda s: s.opt_version()
 
 
     @staticmethod
