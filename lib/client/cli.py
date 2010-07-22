@@ -31,6 +31,7 @@ class Options(cli.Options):
 class PubClientOptions(cli.PluggableOptions):
 
     commandPackage = pub.client
+    defaultSubCommand = "list-keys"
 
     optParameters = [
         ["server", "s", os.getenv("PUB_SERVER"), "Pub service URI"],
