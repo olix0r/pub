@@ -1,3 +1,8 @@
+"""
+SQLite3-backed Pub Service
+"""
+
+from sqlite3 import IntegrityError as SQLError
 
 from twisted.application.service import MultiService
 from twisted.internet.defer import (Deferred, inlineCallbacks, returnValue,
@@ -5,9 +10,10 @@ from twisted.internet.defer import (Deferred, inlineCallbacks, returnValue,
 from zope.interface import implements
 
 from jersey import log
-from jersey.cred import version as VERSION
-from jersey.cred.crypto import Key
-from jersey.cred.pub import iface
+
+from pub import version as VERSION
+from pub.crypto import Key
+from pub import iface
 
 
 
@@ -63,30 +69,57 @@ class PubService(MultiService):
         Arguments:
             id --  Entity id
             species --  Entity species name.
-            primaryKey --  Entity's primary public key.  An instance of
-                jersey.cred.crypto.Key.
+            primaryKey --  Entity's primary public key.  Instance of
+                pub.crypto.Key.
         """
+        log.debug("Registering entity: {0}".format(id))
         ent = self._buildEntity(id, species, primaryKey.id)
-        if _tx:
-            yield self._db_registerEntity(_tx, ent, primaryKey)
+
+        try:
+            if _tx:
+                yield self._db_registerEntity(_tx, ent, primaryKey)
+            else:
+                yield self._db.runInteraction(
+                        self._db_registerEntity, ent, primaryKey)
+
+        except SQLError, err:
+            if err.args[0] == "column id is not unique":
+                raise iface.EntityAlreadyExists(id)
+            else:
+                raise err
+
         else:
-            yield self._db.runInteraction(
-                    self._db_registerEntity, ent, primaryKey)
-        returnValue(ent)
+            log.debug("Registered entity: {0!r}".format(ent))
+            returnValue(ent)
 
 
     _registerEntitySQL = "INSERT INTO Entity VALUES(?,?,?)"
 
-    @inlineCallbacks
     def _db_registerEntity(self, tx, ent, primaryKey):
         args = (ent.id, ent.species, ent.primaryKeyId)
         tx.execute(self._registerEntitySQL, args)
-        yield maybeDeferred(ent.registerKey, primaryKey, "primary key", _tx=tx)
-        returnValue(ent)
+        ent.registerKey(primaryKey, "primary key", _tx=tx)
+        log.debug("Registered key: {0!r}".format(primaryKey))
 
 
-    #def deleteEntity(self, id):
-    #    pass
+    def unregisterEntity(self, id, _tx=None):
+        """
+        Arguments:
+            id --  Entity id
+        """
+        if _tx:
+            return self._db_unregisterEntity(_tx, id)
+        else:
+            return self._db.runInteraction(self._db_unregisterEntity, id)
+
+
+    _unregisterEntitySQL = "DELETE FROM Entity WHERE id=?"
+    _unregisterEntityKeysSQL = "DELETE FROM Key WHERE entity_id=?"
+
+    def _db_unregisterEntity(self, tx, id):
+        args = (id, )
+        tx.execute(self._unregisterEntitySQL, args)
+        tx.execute(self._unregisterEntityKeysSQL, args)
 
 
     def search(self, id=None, species=None, keyId=None, comment=None,
@@ -155,6 +188,7 @@ class Entity(object):
 
 
     def registerKey(self, key, comment, _tx=None):
+        log.debug("Registering key: {0.id}".format(key))
         pk = self._buildKey(key, comment)
         if _tx:
             # Already in a transaction

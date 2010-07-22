@@ -3,8 +3,8 @@ from twisted.internet.defer import (Deferred, inlineCallbacks, returnValue,
         maybeDeferred, succeed)
 from twisted.trial.unittest import TestCase
 
-from jersey.cred.crypto import Key
-from jersey.cred.pub import db, iface
+from pub import db, iface
+from pub.crypto import Key
 
 
 
@@ -98,6 +98,17 @@ class PubServiceTest(TestCase):
         self.assertEquals(ent.id, id)
         self.assertEquals(ent.species, species)
         self.assertEquals(ent.primaryKeyId, key.id)
+
+
+    @inlineCallbacks
+    def test_unregisterEntity(self):
+        id, species, key = self.ent
+        yield self.svc.unregisterEntity(id)
+        self.assertEquals([
+                ("TRANSACTION", [
+                    ("EXECUTE", db.PubService._unregisterEntitySQL, (id,)),
+                    ("EXECUTE", db.PubService._unregisterEntityKeysSQL, (id,)),
+                ])], self.db.journal)
 
 
     @inlineCallbacks

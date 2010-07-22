@@ -20,27 +20,17 @@ setup(
     name = version.package,
     version = version.short(),
 
-    description = "Jersey Cred Services",
-    long_description = "Credential management prototype",
+    description = "Pub Client and Service",
+    long_description = "Pub key management service and client",
 
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
 
     requires = ["jersey", "twisted", "twisted.conch", "pendrell(>=0.2.0)", ],
-    packages = [
-        "jersey.cred",
-        "jersey.cred.pub",
-        "jersey.cred.pub.cases",
-        "twisted.plugins",
-        ],
-    scripts = ["bin/jget"],
-    package_dir = {
-        "jersey.cred": "lib",
-        },
-    package_data = {
-        "twisted.plugins": ["pub.py"],
-        },
-
+    packages = ["pub", "pub.cases", "pub.client", "twisted.plugins", ],
+    scripts = ["bin/jget", "bin/pubc", ],
+    package_dir = {"pub": "lib", },
+    package_data = {"twisted.plugins": ["pubs.py"], },
     )
 
 

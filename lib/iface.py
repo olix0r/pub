@@ -74,6 +74,13 @@ class IRealm(Interface):
 
 
 
+class EntityAlreadyExists(KeyError):
+
+    def __init__(self, entityId, *args, **kw):
+        KeyError.__init__(self, entityId, *args, **kw)
+        self.entityId = entityId
+
+
 class EntityNotFound(KeyError):
 
     def __init__(self, entityId, *args, **kw):
