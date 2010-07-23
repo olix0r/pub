@@ -26,7 +26,7 @@ setup(
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
 
-    requires = ["jersey", "twisted", "twisted.conch", "pendrell(>=0.2.0)", ],
+    requires = ["jersey", "Twisted", "pendrell>=0.3.0", ],
     packages = ["pub", "pub.cases", "pub.client", "twisted.plugins", ],
     scripts = ["bin/jget", "bin/pubc", ],
     package_dir = {"pub": "lib", },
