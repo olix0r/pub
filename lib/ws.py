@@ -21,6 +21,8 @@ from pub.iface import (IPubService, IEntity, IPublicKey, EntityNotFound,
 
 class PubResource(Resource):
 
+    jsonEncoderClass = PubJSONEncoder
+
     def __init__(self, suffix=None):
         Resource.__init__(self)
         self.suffix = suffix
@@ -46,25 +48,6 @@ class PubResource(Resource):
         #        contentType = accept
         return getattr(self, "suffixTypes", {}
                 ).get(self.suffix, self.defaultType)
-
-
-    class jsonEncoderClass(json.JSONEncoder):
-        def default(self, obj):
-            log.debug("Finding JSON representation for {0!r}".format(obj))
-            if IEntity.providedBy(obj):
-                return {"id": obj.id,
-                        "species": obj.species,
-                        "primaryKeyId": obj.primaryKeyId,
-                        }
-            elif IPublicKey.providedBy(obj):
-                return {"id": obj.id,
-                        "type": obj.type,
-                        "data": obj.data,
-                        "comment": obj.comment,
-                        "entityId": obj.entityId,
-                        }
-            else:
-                return super(PubJSONEncoder, self).default(obj)
 
 
     def jsonize(self, obj, request=None):
@@ -238,5 +221,25 @@ class PubKeyResource(PubResource):
 
     def render_GET(self, request):
         return self.jsonize({"key": self.pubKey})
+
+
+
+class PubJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        log.debug("Finding JSON representation for {0!r}".format(obj))
+        if IEntity.providedBy(obj):
+            return {"id": obj.id,
+                    "species": obj.species,
+                    "primaryKeyId": obj.primaryKeyId,
+                    }
+        elif IPublicKey.providedBy(obj):
+            return {"id": obj.id,
+                    "type": obj.type,
+                    "data": obj.data,
+                    "comment": obj.comment,
+                    "entityId": obj.entityId,
+                    }
+        else:
+            return super(PubJSONEncoder, self).default(obj)
 
 
