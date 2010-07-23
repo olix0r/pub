@@ -1,4 +1,4 @@
-DRAFT VERSION 0.4.1
+DRAFT VERSION 0.4.2
 
 
 Oliver Vaughn Gould <ver@olix0r.net>
@@ -107,6 +107,7 @@ follows:
 
     pubkey-challenge  = 1#( realm | [domain] | challenge )
 
+    realm             = "realm" "=" quoted-string
     domain            = "domain" "=" <"> URI ( 1*SP URI ) <">
     URI               = absoluteURI | abs_path
     challenge         = "challenge" "=" quoted-string
@@ -403,4 +404,4 @@ Depending on the server's resources, it may be desirable to use a cipher
 algorithm instead of a digest algorithm.
 
 
-DRAFT VERSION 0.4.1
+DRAFT VERSION 0.4.2
