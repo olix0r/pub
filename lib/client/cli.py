@@ -200,7 +200,7 @@ def run(args=sys.argv[:]):
         runner.run()
 
     except cli.UsageError, ue:
-        print >>sys.stderr, config.getUsage()
+        print >>sys.stderr, str(config)
         print >>sys.stderr, str(ue)
         raise SystemExit(os.EX_USAGE)
 

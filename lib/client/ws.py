@@ -137,7 +137,8 @@ class Entity(object):
                 raise
 
         keyInfo = rsp.json["key"]
-        key = self._buildKey(keyInfo["data"], keyInfo.get("comment"))
+        keyData = keyInfo["data"].decode("base64")
+        key = self._buildKey(keyData, keyInfo.get("comment"))
         returnValue(key)
 
 
@@ -169,8 +170,9 @@ class Entity(object):
     def _buildKey(self, key, comment):
         if isinstance(key, basestring):
             try:
-                key = Key.fromString(params["data"])
+                key = crypto.Key.fromString(key)
             except:
+                log.err()
                 raise ValueError("Invalid key data")
         if not isinstance(key, crypto.Key):
             raise ValueError("Invalid key")
