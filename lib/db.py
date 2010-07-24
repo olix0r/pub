@@ -236,7 +236,7 @@ class PublicKey(object):
           key -- Instance of crypto.Key.
           entityId -- Key owner id.
         """
-        self_db = db
+        self._db = db
         self._key = key.public()  # Icky private stuff go away!
         self.entityId = entityId
         self.comment = comment
