@@ -148,9 +148,9 @@ class AuthService(MultiService, object):
     def buildAuthenticators(self):
         authenticators = []
         if self.authConfig:
-            for keyId, realms in self.authConfig:
-                if keyId in self.keys:
-                    auth = self.buildAuthenticator(keyId, realms=realms)
+            for authSpec in self.authConfig:
+                if authSpec["keyId"] in self.keys:
+                    auth = self.buildAuthenticator(authSpec)
                     authenticators.append(auth)
         else:
             for keyId in self.keys:
@@ -159,8 +159,9 @@ class AuthService(MultiService, object):
         return authenticators
 
 
-    def buildAuthenticator(self, keyId, **kw):
-        return PubKeyAuthenticator(self, self.keys[keyId], **kw)
+    def buildAuthenticator(self, authSpec):
+        return PubKeyAuthenticator(self, self.keys[authSpec["keyId"]],
+                realms=authSpec.get("realms"))
 
 
 
@@ -212,11 +213,12 @@ class PubKeyAuthenticator(object):
 
 
     def getIdentifierInRealm(self, realm):
+        # Nb, lack of realm spec means .*  (No means yes)
         if not self.realms:
             return os.getlogin()
-        for id, realmRE in self.realms:
-            if not realmRE or realmRE.match(realm):
-                return id or os.getlogin()
+        for realmSpec in self.realms:
+            if "realm" not in realmSpec or realmSpec["realm"].match(realm):
+                return realmSpec.get("id") or os.getlogin()
         return None
 
 
@@ -227,6 +229,4 @@ class PubKeyAuthenticator(object):
         data = self._authFmt.format(auth)
         signature = yield self.agent.signData(self.key.id, data)
         returnValue(signature.encode("base64").replace("\n", ""))
-
-
 

@@ -1,5 +1,5 @@
 
-import os, re, sys
+import json, os, re, sys
 
 #from twisted.application.app import ReactorSelectionMixin
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -150,37 +150,38 @@ class PubClientOptions(cli.PluggableOptions):
         An Auth config is in the format::
         
           # Commentary
-          <key-id>  user-id:realm-regex user-id:realm-regex
-          <key-id>  user-id:realm-regex
+          {"authenticators": [
+           {"keyId": keyId, "realms":[{"id":userId, "realm":realmRegex}]}
+           ]
+          }
         """
-        authenticators = []
+        stripped = ""
         if path and path.exists():
             with path.open() as ac:
                 for line in ac:
                     line = line.strip()
                     if line and not line.startswith(self._commentPfx):
-                        try:
-                            keyId, realmSpec = line.split(None, 1)
-                            realms = self._parseRealmSpecs(realmSpec)
-                            authenticators.append((keyId.upper(), realms))
-                        except:
-                            log.err()
-        return authenticators
+                        stripped += line
 
+        try:
+            config = json.loads(stripped)
+            # Need to use a copy of the list if we need to remove() items.
+            for authSpec in list(config["authenticators"]):
+                try:
+                    if "realms" in authSpec:
+                        for realmSpec in authSpec["realms"]:
+                            if "realm" in realmSpec:
+                                realmSpec["realm"] = re.compile(realmSpec["realm"])
 
-    _userDelim = ":"
+                except:
+                    config["authenticators"].remove(authSpec)
+                    log.err()
 
-    def _parseRealmSpecs(self, realmSpec):
-        """Parse a list of (user, regex) tuples from a string."""
-        realms = []
-        for spec in realmSpec.strip().split():
-            try:
-                user, spec = spec.split(self._userDelim, 1)
-            except ValueError:
-                user = None
-            realmRE = re.compile(spec, re.I)
-            realms.append((user, realmRE))
-        return realms
+        except Exception, e:
+            raise UsageError("Malformed configuration: {0!s}\n{1!r}".format(
+                    e, stripped))
+
+        return config["authenticators"]
 
 
 
