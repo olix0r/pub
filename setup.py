@@ -32,7 +32,7 @@ setup(
     package_data = {"twisted.plugins": ["pubs.py"], },
 
     requires = [
-        "jersey(>=0.1.2)", "pendrell(>=0.3.1)",
+        "jersey(>=0.1.3)", "pendrell(>=0.3.1)",
         "Twisted", "pycrypto", "pyasn1",
         ],
     )

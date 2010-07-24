@@ -15,8 +15,9 @@ from twisted.web.util import DeferredResource
 
 from jersey import log
 
+from pub import crypto
 from pub.iface import (IPubService, IEntity, IPublicKey,
-        EntityNotFound, KeyNotFound, KeyAlreadyExists)
+        EntityNotFound, KeyNotFound, KeyAlreadyExists, EntityAlreadyExists)
 
 
 
@@ -91,7 +92,8 @@ class PubResource(Resource):
 
         except Exception, err:
             log.err()
-            if isinstance(err, (EntityNotFound, KeyNotFound, KeyAlreadyExists)):
+            if isinstance(err, (EntityNotFound, KeyNotFound,
+                KeyAlreadyExists, EntityAlreadyExists)):
                 request.setResponseCode(http.BAD_REQUEST)
             else:
                 request.setResponseCode(http.INTERNAL_SERVER_ERROR)
@@ -176,6 +178,27 @@ class EntitiesResource(PubResource):
         request.setHeader("Content-type", "application/json")
         self.jsonize({"entities": ents}, request)
         request.finish()
+
+
+    def render_POST(self, request):
+        self._handleErrors(self._registerEntity, request)
+        return NOT_DONE_YET
+
+
+    @inlineCallbacks
+    def _registerEntity(self, request):
+        posted = json.load(request.content)
+        entInfo = posted["entity"]
+        keyInfo = posted["key"]
+
+        key = crypto.Key.fromString(keyInfo["data"].decode("base64"))
+        ent = yield self.pubSvc.registerEntity(
+                entInfo["id"], entInfo["species"], key)
+
+        request.setHeader("Content-type", "application/json")
+        self.jsonize({"entity": ent}, request)
+        request.finish()
+
 
 
 

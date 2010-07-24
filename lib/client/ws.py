@@ -94,13 +94,52 @@ class PubService(MultiService, object):
             else:
                 raise
 
-        ent = self._buildEntity(rsp.json["entity"])
+        params = rsp.json["entity"]
+        ent = self._buildEntity(params["id"], params["species"],
+                params["primaryKeyId"])
         returnValue(ent)
 
 
-    def _buildEntity(self, params):
-        return Entity(params["id"], params["species"], params["primaryKeyId"],
-                self.config, self.agent)
+    @inlineCallbacks
+    def registerEntity(self, entId, species, key):
+        url = self.baseUrl.click("entities/")
+        ent = self._buildEntity(entId, species, key.id)
+        pubKey = self._buildKey(key, entId, "primary")
+        try:
+            rsp = yield self.agent.open(url, method="POST",
+                    data=ws.jsonize({"entity": ent, "key": pubKey, }))
+
+        except WebError, err:
+            if int(err.status) == http.BAD_REQUEST:
+                try:
+                    errInfo = json.loads(err.response.content)["error"]
+                except:
+                    log.err()
+                    raise err
+                else:
+                    log.debug("Decoded JSON error")
+                    if errInfo.get("type") == "EntityAlreadyExists":
+                        raise iface.EntityAlreadyExists(entId)
+            log.err()
+            raise
+
+        returnValue(ent)
+
+
+    def _buildEntity(self, id, species, pkId):
+        return Entity(id, species, pkId, self.config, self.agent)
+
+
+    def _buildKey(self, key, entId, comment):
+        if isinstance(key, basestring):
+            try:
+                key = crypto.Key.fromString(key)
+            except:
+                log.err()
+                raise ValueError("Invalid key data")
+        if not isinstance(key, crypto.Key):
+            raise ValueError("Invalid key")
+        return PublicKey(key, entId, comment, self.config, self.agent)
 
 
 

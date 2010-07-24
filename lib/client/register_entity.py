@@ -57,7 +57,8 @@ class Command(cli.Command):
                     self.config["key"])
 
         except EntityAlreadyExists:
-            print >>sys.stderr, "Entity already exists: {0}".format(entId)
+            print >>sys.stderr, "Entity already exists: {0!s}".format(entId)
+            raise SystemExit(1)
 
         else:
             log.debug("Registered an entity")
