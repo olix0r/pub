@@ -67,7 +67,21 @@ class AuthService(MultiService, object):
 
 
     def __repr__(self):
-        return "{0.__class__.__name__}({0.authConfig!r})".format(self)
+        keys = self.keys.keys()  # malkovich malkovich
+        auths = []
+        for authSpec in self.authConfig:
+            realms = []
+            for realmSpec in authSpec.get("realms", []):
+                realm = {}
+                if "keyId" in realmSpec:
+                    realm["keyId"] = realmSpec["keyId"]
+                if "realm" in realmSpec:
+                    realm["realm"] = realmSpec["pattern"]
+                realms.append(realm)
+            auths.append({"keyId": authSpec["keyId"], "realms": realms})
+
+        return "<{0.__class__.__name__} keys={1}, authenticators={2})>".format(
+                self, keys, auths)
 
 
     @inlineCallbacks

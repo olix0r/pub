@@ -155,34 +155,49 @@ class PubClientOptions(cli.PluggableOptions):
            ]
           }
         """
-        stripped = ""
         if path and path.exists():
-            with path.open() as ac:
-                for line in ac:
-                    line = line.strip()
-                    if line and not line.startswith(self._commentPfx):
-                        stripped += line
+            try:
+                stripped = self._stripFile(path)
+                config = json.loads(stripped)
+                authenticators = config["authenticators"]
 
-        try:
-            config = json.loads(stripped)
-            # Need to use a copy of the list if we need to remove() items.
-            for authSpec in list(config["authenticators"]):
-                try:
-                    if "realms" in authSpec:
-                        for realmSpec in authSpec["realms"]:
-                            if "realm" in realmSpec:
-                                realmSpec["realm"] = re.compile(realmSpec["realm"])
+            except Exception, e:
+                msg = "Malformed configuration: {0!s}".format(e)
+                if "stripped" in locals():
+                    msg += "\n" + stripped
+                raise UsageError(msg)
 
-                except:
-                    config["authenticators"].remove(authSpec)
-                    log.err()
+        else:
+            authenticators = []
 
-        except Exception, e:
-            raise UsageError("Malformed configuration: {0!s}\n{1!r}".format(
-                    e, stripped))
+        return self._compileRealmRegexes(authenticators)
 
-        return config["authenticators"]
 
+    def _stripFile(self, path):
+        stripped = ""
+        with path.open() as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith(self._commentPfx):
+                    stripped += line
+        return stripped
+
+
+    def _compileRealmRegexes(self, authenticators):
+        # Need to use a copy of the list if we need to remove() items.
+        for authSpec in list(authenticators):
+            try:
+                if "realms" in authSpec:
+                    for realmSpec in authSpec["realms"]:
+                        if "realm" in realmSpec:
+                            realmSpec["pattern"] = pattern = realmSpec["realm"]
+                            realmSpec["realm"] = re.compile(pattern)
+
+            except:
+                authenticators.remove(authSpec)
+                log.err()
+
+        return authenticators
 
 
 class PubClientRunner(cli.PluggableCommandRunner):
