@@ -69,12 +69,14 @@ class PubChecker(object):
             entity = yield self.svc.getEntity(cred.identifier)
             keyInfo = yield entity.listKeys()
             keys = []
-            for keyId, kind, comment in keyInfo:
+            for keyId in keyInfo.iterkeys():
                 try:
                     key = yield entity.getKey(keyId)
                 except KeyNotFound, knf:  # Weidness afoot
                     log.warn("Key disappeared! {0}".format(keyId))
                 else:
+                    log.debug("{0} {2} {1}".format(key.id, keyId,
+                        "==" if key.id == keyId else "!="))
                     keys.append(key)
 
         except EntityNotFound:
@@ -95,6 +97,8 @@ class PubChecker(object):
             verified = key.verify(credentials.signature, credentials.data)
             if not verified:
                 log.debug("Signature verification failure: {0.id}".format(key))
+        if verified:
+            log.debug("Signature verifified: {0.id}".format(key))
         return verified
 
 

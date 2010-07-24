@@ -26,11 +26,15 @@ setup(
     author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
     maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
 
-    requires = ["jersey", "Twisted", "pendrell>=0.3.0", ],
     packages = ["pub", "pub.cases", "pub.client", "twisted.plugins", ],
     scripts = ["bin/jget", "bin/pubc", ],
     package_dir = {"pub": "lib", },
     package_data = {"twisted.plugins": ["pubs.py"], },
+
+    requires = [
+        "jersey(>=0.1.2)", "pendrell(>=0.3.1)",
+        "Twisted", "pycrypto", "pyasn1",
+        ],
     )
 
 

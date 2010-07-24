@@ -6,6 +6,8 @@ from twisted.python.usage import UsageError
 
 from zope.interface import implements
 
+from jersey import log
+
 from pub.client import cli
 from pub.iface import EntityNotFound
 
@@ -23,6 +25,7 @@ class Command(cli.Command):
 
     @inlineCallbacks
     def execute(self):
+        log.debug("Configured with {0}".format(self.config.parent.items()))
         if "entities" in self.config:
             entityIds = self.config["entities"]
         else:
@@ -39,8 +42,9 @@ class Command(cli.Command):
 
             else:
                 keyInfos = yield ent.listKeys()
-                for keyInfo in keyInfos:
-                    print "{eid:{p}}  {0}  {2} ".format(*keyInfo, eid=eid, p=p)
+                for keyId, keyInfo in keyInfos.iteritems():
+                    print "{eid:{p}}  {kid}  {1} ".format(
+                            *keyInfo, eid=eid, p=p, kid=keyId)
 
 
 
@@ -50,6 +54,8 @@ class Options(cli.Options):
         """Entity to list keys for.  May be specified multiple times.
         """
         self.setdefault("entities", []).append(entity)
+
+    opt_e = lambda s,e: s.opt_entity(e)
 
 
 class Loader(cli.CommandFactory):
