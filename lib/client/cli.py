@@ -1,5 +1,10 @@
 
-import os, sys
+import os, re, sys
+
+#from twisted.application.app import ReactorSelectionMixin
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.protocol import ClientCreator
+from twisted.python.filepath import FilePath
 
 from jersey import cli, log
 
@@ -34,6 +39,9 @@ class PubClientOptions(cli.PluggableOptions):
 
     optParameters = [
         ["server", "s", os.getenv("PUB_URL"), "Pub Service URI"],
+        ["auth-sock", "A", os.getenv("PUB_AUTH_SOCK"), "Authentication agent socket"],
+        ["auth-conf", "A", os.getenv("PUB_AUTH_CONF", "~/.pub.auth.conf"),
+            "Authentication agent socket"],
         ]
 
     optFlags = [
@@ -70,6 +78,56 @@ class PubClientOptions(cli.PluggableOptions):
         self["server"] = self._toUrl(self["server"])
         self.pubSvc = self.buildPubService()
 
+        self["auth-conf"] = FilePath(os.path.expanduser(self["auth-conf"]))
+
+
+    _commentPfx = "#"
+
+    def readAuthConfig(self):
+        """
+        An Auth config is in the format::
+        
+          # Commentary
+          <key-id>  [id:][range(re)?@](?:.+\.)?domain\.re [id:](?:+\.)otherdom\.re
+          <key-id>  [id:][range@]host\.yaodom\.re
+          <okey-id> [range@]host\.yaodom\.re
+        """
+        config = {}
+        if self["auth-conf"].exists():
+            with self["auth-conf"].open() as ac:
+                for line in ac:
+                    line = line.strip()
+                    if line and not line.startswith(self._commentPfx):
+                        try:
+                            keyId, matchSpec = line.split(None, 1)
+                            matches = self._parseMatchSpec(matchSpec)
+                            config.setdefault(keyId, []).extend(matches)
+                        except:
+                            log.err()
+        return config
+
+
+    _userDelim = ":"
+
+    def _parseMatchSpec(self, matchSpec):
+        """
+        Parse a list of (user, regex) tuples from text in the format::
+
+          [id@](?:.+\.)?domain\.re [id@](?:+\.)otherdom\.re
+        """
+        matches = []
+        for spec in matchSpec.split():
+            if self._userDelim in spec:
+                user, spec = spec.split(self._userDelim, 1)
+            else:
+                user = None
+            if spec:
+                realmRE = re.compile(spec, re.I)
+            else:
+                realmRE = None
+            matches.append((user, realmRE))
+        return matches
+
 
     def buildPubService(self):
         url = self["server"]
@@ -81,10 +139,19 @@ class PubClientOptions(cli.PluggableOptions):
             dbx = db.connectDB("sqlite3", url.path)
             svc = db.PubService(dbx)
 
+        elif url.scheme.lower() in ("http", "https"):
+            authAgent = self.buildAuthAgent()
+            webAgent = self.buildWebAgent()
+
         else:
             raise cli.UsageError("Unsupported scheme: {0}".format(url))
 
         return svc
+
+
+    def buildWebAgent(self):
+        from pendrell import Agent
+        return Agent(authenticators=auths)
 
 
 
