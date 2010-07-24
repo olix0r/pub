@@ -55,7 +55,8 @@ class Command(cli.Command):
                     self.config["key"], self.config["comment"])
 
         except KeyAlreadyExists:
-            print >>sys.stderr, "Key already exists: {0}".format(key.id)
+            print >>sys.stderr, "Key already exists: {0}".format(
+                    self.config["key"].id)
 
         else:
             log.debug("Registered a key")

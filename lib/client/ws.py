@@ -1,47 +1,78 @@
 import json
 
-from twisted.application.service import MultiService
+from twisted.application.service import MultiService, Service
+from twisted.internet.defer import (inlineCallbacks, returnValue, maybeDeferred,
+        gatherResults)
 from twisted.web import http
 
-import pendrell
-from pendrell.errors import WebError
+from zope.interface import implements
 
-f))rom pub import iface
-from pub.ws import PubJSONEncoder
+from jersey import log
+
+import pendrell
+from pendrell.messages import Request, BufferedResponse
+from pendrell.error import WebError
+
+from pub import crypto, iface, ws
 
 
 class PubAgent(pendrell.Agent):
 
-    class requestClass(messages.Request):
+    class requestClass(Request):
 
-        class responseClass(messages.BufferedResponse):
+        class responseClass(BufferedResponse):
 
             _jsonType = "application/json"
 
             def done(self):
+                self.json = None
                 if "Content-type" in self.headers:
                     ctype = self.headers["Content-type"][0]
-                    if ctype == "application/json":
-                        self.json = json.decodes(self.content)
-                    else:
-                        self.json = None
+                    log.debug("Content-type is: {0}".format(ctype))
+                    if ctype == self._jsonType:
+                        self.json = json.loads(self.content)
                 else:
-                    self.json = None
+                    log.debug("No content-type in headers: {0}".format(
+                                self.headers))
+                log.debug("Content: {0}".format(self.content))
 
 
 
-class PubService(MultiService):
+class PubService(MultiService, object):
     implements(iface.IPubService)
 
     def __init__(self, config):
+        super(PubService, self).__init__()
         self.config = config
-        self.baseUrl = self.config["server"]
-        self.authConfig = config.readAuthConfig()
+        self.baseUrl = config["server"]
+
+        self.auth = config.authenticator
+        if self.auth:
+            log.debug("PubService authenticator: {0.auth}".format(self))
+            self.auth.setServiceParent(self)
+
+        self.agent = config.agent
 
 
-    #@inlineCallbacks
+    @inlineCallbacks
     def startService(self):
-        pass
+        klass = self.__class__.__name__
+        log.debug("Starting: {0}".format(klass))
+        Service.startService(self)
+        ds = []
+        for svc in self:
+            log.debug("{0} starting service: {1}".format(klass, svc))
+            d = maybeDeferred(svc.startService)
+            ds.append(d)
+        yield gatherResults(ds)
+        if self.auth:
+            self.agent.authenticators = auths = self.auth.buildAuthenticators()
+            log.debug("Built {1} authenticators: {0}".format(auths, len(auths)))
+
+    @inlineCallbacks
+    def stopService(self):
+        yield self.agent.cleanup()
+        yield maybeDeferred(super(PubService, self).stopService)
 
 
     @inlineCallbacks
@@ -105,20 +136,44 @@ class Entity(object):
             else:
                 raise
 
-        key = self._buildKey(rsp.json["key"])
+        keyInfo = rsp.json["key"]
+        key = self._buildKey(keyInfo["data"], keyInfo.get("comment"))
         returnValue(key)
 
 
+    @inlineCallbacks
     def registerKey(self, key, comment):
-        raise NotImplemented()
-
-
-    def _buildKey(self, params):
+        url = self.baseUrl.click("keys/")
+        pubKey = self._buildKey(key, comment)
         try:
-            key = Key.fromString(params["data"])
-        except:
-            raise ValueError("Invalid key data")
-        comment = params["comment"]
+            rsp = yield self.agent.open(url, method="POST",
+                    data=ws.jsonize({"key": pubKey}))
+
+        except WebError, err:
+            if int(err.status) == http.BAD_REQUEST:
+                try:
+                    errInfo = json.loads(err.response.content)["error"]
+                except:
+                    log.err()
+                    raise err
+                else:
+                    log.debug("Decoded JSON error")
+                    if errInfo.get("type") == "KeyAlreadyExists":
+                        raise iface.KeyAlreadyExists(pubKey)
+            log.err()
+            raise
+
+        returnValue(pubKey)
+
+
+    def _buildKey(self, key, comment):
+        if isinstance(key, basestring):
+            try:
+                key = Key.fromString(params["data"])
+            except:
+                raise ValueError("Invalid key data")
+        if not isinstance(key, crypto.Key):
+            raise ValueError("Invalid key")
         return PublicKey(key, self.id, comment, self.config, self.agent)
 
 

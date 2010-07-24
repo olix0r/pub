@@ -7,6 +7,7 @@ import json
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.python.components import registerAdapter
 
+from twisted.web import http
 from twisted.web.client import HTTPClientFactory
 from twisted.web.resource import IResource, Resource
 from twisted.web.server import NOT_DONE_YET
@@ -14,14 +15,47 @@ from twisted.web.util import DeferredResource
 
 from jersey import log
 
-from pub.iface import (IPubService, IEntity, IPublicKey, EntityNotFound,
-        KeyNotFound)
+from pub.iface import (IPubService, IEntity, IPublicKey,
+        EntityNotFound, KeyNotFound, KeyAlreadyExists)
+
+
+
+class PubJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        log.debug("Finding JSON representation for {0!r}".format(obj))
+        if IEntity.providedBy(obj):
+            return {"id": obj.id,
+                    "species": obj.species,
+                    "primaryKeyId": obj.primaryKeyId,
+                    }
+        elif IPublicKey.providedBy(obj):
+            return {"id": obj.id,
+                    "type": obj.type,
+                    "data": obj.data,
+                    "comment": obj.comment,
+                    "entityId": obj.entityId,
+                    }
+        elif isinstance(obj, Exception):
+            return {"type": obj.__class__.__name__,
+                    "args": obj.args,
+                    }
+        else:
+            return super(PubJSONEncoder, self).default(obj)
+
+
+def jsonize(obj, request=None):
+    if request:
+        r = json.dump(obj, request, cls=PubJSONEncoder)
+        request.write("\n")
+    else:
+        r = json.dumps(obj, cls=PubJSONEncoder) + "\n"
+    return r
 
 
 
 class PubResource(Resource):
 
-    jsonEncoderClass = PubJSONEncoder
+    jsonize = staticmethod(jsonize)
 
     def __init__(self, suffix=None):
         Resource.__init__(self)
@@ -50,14 +84,23 @@ class PubResource(Resource):
                 ).get(self.suffix, self.defaultType)
 
 
-    def jsonize(self, obj, request=None):
-        if request:
-            r = json.dump(obj, request, cls=self.jsonEncoderClass)
-            request.write("\n")
-        else:
-            r = json.dumps(obj, cls=self.jsonEncoderClass) + "\n"
-        return r
+    @inlineCallbacks
+    def _handleErrors(self, open, request):
+        try:
+           rsp = yield open(request)
 
+        except Exception, err:
+            log.err()
+            if isinstance(err, (EntityNotFound, KeyNotFound, KeyAlreadyExists)):
+                request.setResponseCode(http.BAD_REQUEST)
+            else:
+                request.setResponseCode(http.INTERNAL_SERVER_ERROR)
+            request.setHeader("Content-type", "application/json")
+            self.jsonize({"error": err}, request)
+            request.finish()
+
+        else:
+            returnValue(rsp)
 
 
 class PubServiceResource(PubResource):
@@ -72,6 +115,7 @@ class PubServiceResource(PubResource):
 
     def render_GET(self, request):
         uri = request.URLPath().here()
+        request.setHeader("Content-type", "application/json")
         return self.jsonize({"links": [
                 {"rel":"self", "href":"{0}".format(uri), },
                 {"rel":"Entities", "href":"{0}entities".format(uri), },
@@ -123,12 +167,13 @@ class EntitiesResource(PubResource):
 
 
     def render_GET(self, request):
-        self._listEntities(request)
+        self._handleErrors(self._listEntities, request)
         return NOT_DONE_YET
 
     @inlineCallbacks
     def _listEntities(self, request):
         ents = yield self.pubSvc.listEntities()
+        request.setHeader("Content-type", "application/json")
         self.jsonize({"entities": ents}, request)
         request.finish()
 
@@ -149,6 +194,7 @@ class EntityResource(PubResource):
 
     def render_GET(self, request):
         uri = request.URLPath().here()
+        request.setHeader("Content-type", "application/json")
         return self.jsonize({
             "entity": self.entity,
             "links": [
@@ -199,16 +245,37 @@ class EntityKeysResource(PubResource):
 
 
     def render_GET(self, request):
-        self._listKeys(request)
+        self._handleErrors(self._listKeys, request)
         return NOT_DONE_YET
 
     @inlineCallbacks
     def _listKeys(self, request):
-        keyList = yield self.entity.listKeys()
-        keyInfos = {}
-        for (id, type, comment) in keyList:
-            keyInfos[id] = type, comment
+        keyInfos = yield self.entity.listKeys()
+        request.setHeader("Content-type", "application/json")
         self.jsonize({"keys": keyInfos}, request)
+        request.finish()
+
+
+    def render_POST(self, request):
+        log.debug("Registering key from POST: {0}".format(request))
+        self._handleErrors(self._registerKey, request)
+        return NOT_DONE_YET
+
+    @inlineCallbacks
+    def _registerKey(self, request):
+        posted = json.load(request.content)
+        keyInfo = posted["key"]
+
+        if "entityId" in keyInfo and keyInfo["entityId"] != self.entity.id:
+            raise RuntimeError("Bad entity ID")
+
+        keyData = keyInfo["data"].decode("base64")
+        log.debug("Registering key: {0}".format(keyInfo["id"]))
+        key = yield self.entity.registerKey(keyData, keyInfo["comment"])
+        log.debug("Registered key: {0}".format(key))
+
+        request.setHeader("Content-type", "application/json")
+        self.jsonize({"key": key}, request)
         request.finish()
 
 
@@ -220,26 +287,7 @@ class PubKeyResource(PubResource):
         self.pubKey = key
 
     def render_GET(self, request):
+        request.setHeader("Content-type", "application/json")
         return self.jsonize({"key": self.pubKey})
-
-
-
-class PubJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        log.debug("Finding JSON representation for {0!r}".format(obj))
-        if IEntity.providedBy(obj):
-            return {"id": obj.id,
-                    "species": obj.species,
-                    "primaryKeyId": obj.primaryKeyId,
-                    }
-        elif IPublicKey.providedBy(obj):
-            return {"id": obj.id,
-                    "type": obj.type,
-                    "data": obj.data,
-                    "comment": obj.comment,
-                    "entityId": obj.entityId,
-                    }
-        else:
-            return super(PubJSONEncoder, self).default(obj)
 
 

@@ -21,7 +21,9 @@ class Command(cli.Command):
     def __init__(self, config):
         cli.Command.__init__(self, config)
         self.pub = getattr(config, "pubSvc", None)
-        self.pub.setServiceParent(self)
+        if self.pub:
+            self.pub.setServiceParent(self)
+
 
 
 class Options(cli.Options):
@@ -40,7 +42,7 @@ class PubClientOptions(cli.PluggableOptions):
     optParameters = [
         ["server", "s", os.getenv("PUB_URL"), "Pub Service URI"],
         ["auth-sock", "A", os.getenv("PUB_AUTH_SOCK"), "Authentication agent socket"],
-        ["auth-conf", "A", os.getenv("PUB_AUTH_CONF", "~/.pub.auth.conf"),
+        ["auth-conf", "a", os.getenv("PUB_AUTH_CONF", "~/.pub.auth.conf"),
             "Authentication agent socket"],
         ]
 
@@ -61,14 +63,17 @@ class PubClientOptions(cli.PluggableOptions):
 
 
     @staticmethod
-    def _toUrl(url):
-        if not url:
+    def _toUrl(spec):
+        if not spec:
             raise cli.UsageError("No Pub server")
         from twisted.python.urlpath import URLPath
         try:
-            return URLPath.fromString(url)
+            url = URLPath.fromString(spec)
         except:
-            raise cli.UsageError("Invalid URL: {0}".format(url))
+            raise cli.UsageError("Invalid URL: {0}".format(spec))
+        if not spec.startswith(url.scheme):
+            raise cli.UsageError("Invalid URL: {0}".format(spec))
+        return url
 
 
     def postOptions(self):
@@ -76,82 +81,106 @@ class PubClientOptions(cli.PluggableOptions):
             self.logLevel = log.DEBUG
 
         self["server"] = self._toUrl(self["server"])
-        self.pubSvc = self.buildPubService()
-
         self["auth-conf"] = FilePath(os.path.expanduser(self["auth-conf"]))
+        if self["auth-sock"]:
+            self["auth-sock"] = FilePath(os.path.expanduser(self["auth-sock"]))
 
-
-    _commentPfx = "#"
-
-    def readAuthConfig(self):
-        """
-        An Auth config is in the format::
-        
-          # Commentary
-          <key-id>  [id:][range(re)?@](?:.+\.)?domain\.re [id:](?:+\.)otherdom\.re
-          <key-id>  [id:][range@]host\.yaodom\.re
-          <okey-id> [range@]host\.yaodom\.re
-        """
-        config = {}
-        if self["auth-conf"].exists():
-            with self["auth-conf"].open() as ac:
-                for line in ac:
-                    line = line.strip()
-                    if line and not line.startswith(self._commentPfx):
-                        try:
-                            keyId, matchSpec = line.split(None, 1)
-                            matches = self._parseMatchSpec(matchSpec)
-                            config.setdefault(keyId, []).extend(matches)
-                        except:
-                            log.err()
-        return config
-
-
-    _userDelim = ":"
-
-    def _parseMatchSpec(self, matchSpec):
-        """
-        Parse a list of (user, regex) tuples from text in the format::
-
-          [id@](?:.+\.)?domain\.re [id@](?:+\.)otherdom\.re
-        """
-        matches = []
-        for spec in matchSpec.split():
-            if self._userDelim in spec:
-                user, spec = spec.split(self._userDelim, 1)
-            else:
-                user = None
-            if spec:
-                realmRE = re.compile(spec, re.I)
-            else:
-                realmRE = None
-            matches.append((user, realmRE))
-        return matches
+        self.pubSvc = self.buildPubService()
 
 
     def buildPubService(self):
         url = self["server"]
-        if url.scheme.lower() == "sqlite3":
-            if url.netloc:
-                raise cli.UsageError(
-                        "Local scheme with remote location: {0}".format(url))
-            from pub import db
-            dbx = db.connectDB("sqlite3", url.path)
-            svc = db.PubService(dbx)
+        log.debug("Building PubService({0})".format(url))
 
-        elif url.scheme.lower() in ("http", "https"):
-            authAgent = self.buildAuthAgent()
-            webAgent = self.buildWebAgent()
+        # TODO (Jersey) Plugins?
+        pubBuilders = {
+                "http": self._buildPubService_http,
+                "https": self._buildPubService_http,
+                "sqlite3": self._buildPubService_sqlite3,
+                }
+        scheme = url.scheme.lower()
+        buildService = pubBuilders.get(scheme)
+
+        if buildService is None:
+            raise cli.UsageError("Unsupported scheme: {0}".format(url))
+        return buildService(url)
+
+
+    def _buildPubService_sqlite3(self, url):
+        if url.netloc:
+            raise cli.UsageError("Invalid URL: {0}".format(url))
+        from pub import db
+        dbx = db.connectDB("sqlite3", url.path)
+        svc = db.PubService(dbx)
+        return svc
+
+
+    def _buildPubService_http(self, url):
+        if not url.netloc:
+            raise cli.UsageError("Invalid URL: {0}".format(url))
+        from pub.client import ws
+        self.authenticator = self._buildAuthService()
+        self.agent = self._buildWebAgent()
+        svc = ws.PubService(self)
+        return svc
+
+
+    def _buildAuthService(self):
+        if self["auth-sock"] and self["auth-sock"].exists():
+            from pub.client.auth import AuthService, SSHAgentClient
+            auths = self.readAuthConfig(self["auth-conf"])
+            svc = AuthService(auths)
+            svc.attachSocket(self["auth-sock"].path)
 
         else:
-            raise cli.UsageError("Unsupported scheme: {0}".format(url))
+            svc = None
 
         return svc
 
 
-    def buildWebAgent(self):
-        from pendrell import Agent
-        return Agent(authenticators=auths)
+    def _buildWebAgent(self):
+        from pub.client.ws import PubAgent
+        return PubAgent()
+
+
+    _commentPfx = "#"
+
+    def readAuthConfig(self, path):
+        """
+        An Auth config is in the format::
+        
+          # Commentary
+          <key-id>  user-id:realm-regex user-id:realm-regex
+          <key-id>  user-id:realm-regex
+        """
+        authenticators = []
+        if path and path.exists():
+            with path.open() as ac:
+                for line in ac:
+                    line = line.strip()
+                    if line and not line.startswith(self._commentPfx):
+                        try:
+                            keyId, realmSpec = line.split(None, 1)
+                            realms = self._parseRealmSpecs(realmSpec)
+                            authenticators.append((keyId.upper(), realms))
+                        except:
+                            log.err()
+        return authenticators
+
+
+    _userDelim = ":"
+
+    def _parseRealmSpecs(self, realmSpec):
+        """Parse a list of (user, regex) tuples from a string."""
+        realms = []
+        for spec in realmSpec.strip().split():
+            try:
+                user, spec = spec.split(self._userDelim, 1)
+            except ValueError:
+                user = None
+            realmRE = re.compile(spec, re.I)
+            realms.append((user, realmRE))
+        return realms
 
 
 
@@ -167,7 +196,6 @@ def run(args=sys.argv[:]):
     config = PubClientOptions(progName)
     try:
         config.parseOptions()
-
         runner = PubClientRunner(progName, config)
         runner.run()
 
