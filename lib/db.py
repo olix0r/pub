@@ -191,15 +191,23 @@ class Entity(object):
     def registerKey(self, key, comment, _tx=None):
         log.debug("Registering key: {0.id}".format(key))
         pk = self._buildKey(key, comment)
+        log.debug("Registering key: {0.id}".format(pk))
 
+        if _tx:
+            # Already in a transaction
+            self._db_registerKey(_tx, pk)
+            return succeed(pk)
+
+        else:
+            return self._db.runInteraction(self._db_registerKey, pk)
+
+
+    _registerKeySQL = "INSERT INTO Key VALUES(?,?,?,?,?)"
+
+    def _db_registerKey(self, tx, key):
         try:
-            if _tx:
-                # Already in a transaction
-                self._db_registerKey(_tx, pk)
-                return succeed(pk)
-
-            else:
-                return self._db.runInteraction(self._db_registerKey, pk)
+            args = (key.id, key.type, key.data, key.comment, key.entityId)
+            tx.execute(self._registerKeySQL, args)
 
         except IntegrityError, err:
             if err.args[0] == "column id is not unique":
@@ -207,14 +215,8 @@ class Entity(object):
             else:
                 raise err
 
-
-
-    _registerKeySQL = "INSERT INTO Key VALUES(?,?,?,?,?)"
-
-    def _db_registerKey(self, tx, key):
-        args = (key.id, key.type, key.data, key.comment, key.entityId)
-        tx.execute(self._registerKeySQL, args)
-        return key
+        else:
+            return key
 
 
     _listKeysSQL = "SELECT id,type,comment FROM Key WHERE entity_id=?"
@@ -223,7 +225,10 @@ class Entity(object):
     def listKeys(self):
         """Return a list of (id, type, comment) tuples."""
         rows = yield self._db.runQuery(self._listKeysSQL, (self.id,))
-        returnValue(rows)
+        keyInfos = {}
+        for keyId, keyType, comment in rows:
+            keyInfos[keyId] = (keyType, comment)
+        returnValue(keyInfos)
 
 
 
@@ -236,7 +241,7 @@ class PublicKey(object):
           key -- Instance of crypto.Key.
           entityId -- Key owner id.
         """
-        self_db = db
+        self._db = db
         self._key = key.public()  # Icky private stuff go away!
         self.entityId = entityId
         self.comment = comment

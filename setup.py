@@ -23,14 +23,18 @@ setup(
     description = "Pub Client and Service",
     long_description = "Pub key management service and client",
 
-    author = "Oliver Gould", author_email = "ver@yahoo-inc.com",
-    maintainer = "Oliver Gould", maintainer_email = "ver@yahoo-inc.com",
+    author = "Oliver Gould", author_email = "ver@olix0r.net",
+    maintainer = "Oliver Gould", maintainer_email = "ver@olix0r.net",
 
-    requires = ["jersey(>=0.2.3)", "twisted", "twisted.conch", ],
     packages = ["pub", "pub.cases", "pub.client", "twisted.plugins", ],
-    scripts = ["bin/pubc", ],
+    scripts = ["bin/jget", "bin/pubc", ],
     package_dir = {"pub": "lib", },
     package_data = {"twisted.plugins": ["pubs.py"], },
+
+    requires = [
+        "jersey(>=0.2.3)", "pendrell(>=0.3.4)",
+        "Twisted", "pycrypto", "pyasn1",
+        ],
     )
 
 

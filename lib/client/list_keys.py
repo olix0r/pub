@@ -6,6 +6,9 @@ from twisted.python.usage import UsageError
 
 from zope.interface import implements
 
+from jersey import log
+
+from pub import crypto
 from pub.client import cli
 from pub.iface import EntityNotFound
 
@@ -23,6 +26,7 @@ class Command(cli.Command):
 
     @inlineCallbacks
     def execute(self):
+        log.debug("Configured with {0}".format(self.config.parent.items()))
         if "entities" in self.config:
             entityIds = self.config["entities"]
         else:
@@ -33,23 +37,36 @@ class Command(cli.Command):
             try:
                 ent = yield self.pub.getEntity(eid)
 
-            except EntityNotFound:
-                print >>sys.stderr, "{eid:{p}}  Not found".format(eid=eid, p=p)
-                self.returnValue = 1
-
-            else:
                 keyInfos = yield ent.listKeys()
-                for keyInfo in keyInfos:
-                    print "{eid:{p}}  {0}  {2} ".format(*keyInfo, eid=eid, p=p)
+                for (keyId, (keyType, comment)) in keyInfos.iteritems():
+                    if self.config["fingerprint"]:
+                        pubKey = yield ent.getKey(keyId)
+                        keyData = pubKey.data.decode("base64")
+                        key = crypto.Key.fromString(keyData)
+                        keyId = key.fingerprint()
+                    print "{eid:{p}} {type} {kid} {comment} ".format(
+                            eid=eid, p=p, kid=keyId, type=keyType,
+                            comment=comment)
+
+            except EntityNotFound:
+                print >>sys.stderr, "{eid:{p}} Not found".format(eid=eid, p=p)
+                self.returnValue = 1
 
 
 
 class Options(cli.Options):
 
+    optFlags = (
+            ("fingerprint", "f", "Show full fingerprints instead of key IDs"),
+        )
+
     def opt_entity(self, entity):
         """Entity to list keys for.  May be specified multiple times.
         """
         self.setdefault("entities", []).append(entity)
+
+    opt_e = lambda s,e: s.opt_entity(e)
+
 
 
 class Loader(cli.CommandFactory):
